@@ -1,0 +1,16 @@
+## Data
+*.json
+*.gz
+*.csv
+*.joblib
+*.txt
+## Plots
+*.png
+
+## Artifacts
+*pycache*
+*.pyc
+*.DS_Store
+
+## Credentials
+config.json
