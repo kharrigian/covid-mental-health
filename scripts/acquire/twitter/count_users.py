@@ -16,6 +16,8 @@ Command-line Args:
 IGNORE_RETWEETS = True
 IGNORE_NON_ENGLISH = True
 FREQ = "D" # H, D, W, M, Y
+SAMPLE_FREQ = 1
+RANDOM_SEED = 42
 
 ####################
 ### Imports
@@ -26,8 +28,16 @@ import os
 import sys
 import gzip
 import json
+import random
 from datetime import datetime
 from collections import Counter
+
+####################
+### Globals
+####################
+
+## Random Number Generator
+SEED = random.Random(x=RANDOM_SEED)
 
 ####################
 ### Helpers
@@ -73,6 +83,9 @@ counts = dict()
 with gzip.open(filename,"r") as the_file:
 	try:
 		for l, line in enumerate(the_file):
+			## Random Sampling (Tweet-level)
+			if SEED.uniform(0, 1) > SAMPLE_FREQ:
+				continue
 			## Parse JSON Line
 			try:
 				data = json.loads(line)
@@ -99,12 +112,12 @@ with gzip.open(filename,"r") as the_file:
 	except Exception as e:
 		pass
 
-## Write Counts
-if len(counts) > 0:
-	prefix = os.path.basename(filename).replace(".gz","")
-	outfile = f"{outdir}{prefix}_processed.json"
-	with open(outfile, "w") as the_file:
-		json.dump(counts, the_file)
+# ## Write Counts
+# if len(counts) > 0:
+# 	prefix = os.path.basename(filename).replace(".gz","")
+# 	outfile = f"{outdir}{prefix}_processed.json"
+# 	with open(outfile, "w") as the_file:
+# 		json.dump(counts, the_file)
 
 ## Done
 print("Script Complete")
