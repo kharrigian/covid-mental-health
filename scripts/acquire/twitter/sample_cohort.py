@@ -4,7 +4,7 @@
 ##################
 
 ## Count Outputs
-COUNTS_DIR = "./data/processed/counts/"
+COUNTS_DIR = "./data/processed/twitter/counts/"
 
 ## Recaculate Counts (if they already exist)
 RERUN_COUNTS = False

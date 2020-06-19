@@ -112,12 +112,12 @@ with gzip.open(filename,"r") as the_file:
 	except Exception as e:
 		pass
 
-# ## Write Counts
-# if len(counts) > 0:
-# 	prefix = os.path.basename(filename).replace(".gz","")
-# 	outfile = f"{outdir}{prefix}_processed.json"
-# 	with open(outfile, "w") as the_file:
-# 		json.dump(counts, the_file)
+## Write Counts
+if len(counts) > 0:
+	prefix = os.path.basename(filename).replace(".gz","")
+	outfile = f"{outdir}{prefix}_processed.json"
+	with open(outfile, "w") as the_file:
+		json.dump(counts, the_file)
 
 ## Done
 print("Script Complete")

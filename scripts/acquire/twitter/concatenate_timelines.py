@@ -1,6 +1,6 @@
 
 ## Where temp directory of data files currently lives
-DATA_DIR = "./data/raw/timelines/"
+DATA_DIR = "./data/raw/twitter/timelines/"
 
 ##################
 ### Imports
