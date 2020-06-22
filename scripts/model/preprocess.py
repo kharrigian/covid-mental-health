@@ -190,8 +190,14 @@ def process_reddit_comment_file(f,
         file_opener = gzip.open
     else:
         file_opener = open
-    with file_opener(f, "r") as the_file:
-        comment_data = json.load(the_file)
+    try:
+        with file_opener(f, "r") as the_file:
+            comment_data = json.load(the_file)
+    except json.JSONDecodeError:
+        with file_opener(f, "r") as the_file:
+            comment_data = []
+            for line in the_file:
+                comment_data.append(json.loads(line))
     ## Transform into DataFrame
     comment_data = pd.DataFrame(comment_data).dropna(subset=["body"])
     ## Tokenize Text
