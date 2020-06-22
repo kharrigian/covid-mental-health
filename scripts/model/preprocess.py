@@ -202,7 +202,7 @@ def process_reddit_comment_file(f,
             fname = fname + ".gz"
         output_folder = output_folder.rstrip("/")
         fname = f"{output_folder}/{fname}"
-        if os.path.exists(fname)
+        if os.path.exists(fname):
             return fname
     ## Load Comment Data
     if f.endswith(".gz"):
