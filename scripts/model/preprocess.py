@@ -137,8 +137,14 @@ def process_tweet_file(f,
         file_opener = gzip.open
     else:
         file_opener = open
-    with file_opener(f, "r") as the_file:
-        tweet_data = [format_tweet_data(i) for i in json.load(the_file)]
+    try:
+        with file_opener(f, "r") as the_file:
+            tweet_data = [format_tweet_data(i) for i in json.load(the_file)]
+    except json.JSONDecodeError:
+        with file_opener(f, "r") as the_file:
+            tweet_data = []
+            for line in the_file:
+                tweet_data.append(format_tweet_data(json.loads(line)))
     ## Transform into DataFrame
     tweet_data = pd.DataFrame(tweet_data).dropna(subset=["text"])
     ## Tokenize Text
