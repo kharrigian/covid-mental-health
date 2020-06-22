@@ -4,6 +4,10 @@
 *.csv
 *.joblib
 *.txt
+data/raw
+data/processed
+!data/raw/README.md
+!data/processed/README.md
 ## Plots
 *.png
 
