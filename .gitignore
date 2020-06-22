@@ -3,7 +3,7 @@
 *.gz
 *.csv
 *.joblib
-*.txt
+
 data/raw
 data/processed
 !data/raw/README.md

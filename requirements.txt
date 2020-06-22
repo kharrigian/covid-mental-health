@@ -1,0 +1,6 @@
+pandas
+matplotlib
+scipy
+numpy
+tweepy>=3.8.0
+mhlib
