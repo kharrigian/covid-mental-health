@@ -132,6 +132,15 @@ def process_tweet_file(f,
         else:
             fname (str): Name of file where processed data was cached
     """
+    ## Check for Output
+    if output_folder is not None:
+        fname = os.path.basename(f).replace("tweets.json","processed.tweets.json")
+        if not fname.endswith(".gz"):
+            fname = fname + ".gz"
+        output_folder = output_folder.rstrip("/")
+        fname = f"{output_folder}/{fname}"
+        if os.path.exists(fname):
+            return fname
     ## Load Tweet Data
     if f.endswith(".gz"):
         file_opener = gzip.open
@@ -165,11 +174,6 @@ def process_tweet_file(f,
     if output_folder is None:
         return formatted_data
     else:
-        fname = os.path.basename(f).replace("tweets.json","processed.tweets.json")
-        if not fname.endswith(".gz"):
-            fname = fname + ".gz"
-        output_folder = output_folder.rstrip("/")
-        fname = f"{output_folder}/{fname}"
         with gzip.open(fname, "wt", encoding="utf-8") as the_file:
             json.dump(formatted_data, the_file)
         return fname
@@ -191,6 +195,15 @@ def process_reddit_comment_file(f,
         else:
             fname (str): Name of file where processed data was cached
     """
+    ## Output File
+    if output_folder is not None:
+        fname = os.path.basename(f).replace("comments.json","processed.comments.json")
+        if not fname.endswith(".gz"):
+            fname = fname + ".gz"
+        output_folder = output_folder.rstrip("/")
+        fname = f"{output_folder}/{fname}"
+        if os.path.exists(fname)
+            return fname
     ## Load Comment Data
     if f.endswith(".gz"):
         file_opener = gzip.open
@@ -222,11 +235,6 @@ def process_reddit_comment_file(f,
     if output_folder is None:
         return formatted_data
     else:
-        fname = os.path.basename(f).replace("comments.json","processed.comments.json")
-        if not fname.endswith(".gz"):
-            fname = fname + ".gz"
-        output_folder = output_folder.rstrip("/")
-        fname = f"{output_folder}/{fname}"
         with gzip.open(fname, "wt", encoding="utf-8") as the_file:
             json.dump(formatted_data, the_file)
         return fname
