@@ -4,10 +4,18 @@
 *.csv
 *.joblib
 
+## Specific Data Paths
 data/raw
 data/processed
 !data/raw/README.md
 !data/processed/README.md
+!data/resources/covid_subreddits.json
+!data/resources/covid_terms.json
+!data/resources/*keywords
+!data/resources/mental_health_keywords.csv
+!data/resources/mental_health_subreddits.json
+!data/resources/mental_health_terms.json
+
 ## Plots
 *.png
 
