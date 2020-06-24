@@ -51,6 +51,7 @@ DB_SCHEMA = {
                 "created_utc":"created_utc",
                 "body":"text",
                 "text_tokenized":"text_tokenized",
+                "subreddit":"subreddit",
                 "id":"comment_id",
                 "entity_type":"entity_type",
                 'date_processed_utc': 'date_processed_utc', 
