@@ -5,6 +5,7 @@
 
 ## Standard Library
 import os
+import sys
 import json
 import gzip
 import argparse
@@ -81,6 +82,10 @@ def parse_arguments():
                         type=float,
                         default=70,
                         help="Sample Percentage (0,100] to use for estimating feature support range")
+    parser.add_argument("--keep_missing",
+                        action="store_true",
+                        default=False,
+                        help="If included, will make predictions for users without any features")
     ## Parse Arguments
     args = parser.parse_args()
     ## Check Arguments
@@ -125,7 +130,8 @@ def predict_and_interpret(filenames,
                           n_samples=None,
                           randomized=False,
                           bootstrap_samples=100,
-                          bootstrap_sample_percent=70):
+                          bootstrap_sample_percent=70,
+                          ignore_missing=True):
     """
 
     """
@@ -142,6 +148,12 @@ def predict_and_interpret(filenames,
                                                 max_date=max_date,
                                                 n_samples=n_samples, 
                                                 randomized=randomized)
+    ## Ignore Users without any features
+    if ignore_missing:
+        LOGGER.info("Filtering Out Users Without Any Recognized Terms")
+        missing_mask = np.nonzero((X_test!=0).any(axis=1))[0]
+        test_files = [test_files[m] for m in missing_mask]
+        X_test = X_test[missing_mask]
     ## Apply Any Additional Preprocessing
     LOGGER.info("Generating Feature Set")
     X_test = model.preprocessor.transform(X_test)    
@@ -153,7 +165,7 @@ def predict_and_interpret(filenames,
     ## Get Feature Range (Bootstrap used for Confidence Intervals)
     sample_size = int(X_test.shape[0] * bootstrap_sample_percent / 100)
     feature_range = []
-    for _ in tqdm(list(range(bootstrap_samples)), desc="Bootstrap Feature Samples"):
+    for _ in tqdm(list(range(bootstrap_samples)), desc="Bootstrap Feature Samples", file=sys.stdout):
         sind = np.random.choice(X_test.shape[0], size=sample_size, replace=True)
         feature_range.append(support[sind].mean(axis=0))
     feature_range = np.percentile(np.vstack(feature_range), [2.5, 50, 97.5], axis=0)
@@ -224,6 +236,8 @@ def main():
     ## Get Date Boundaries
     LOGGER.info(f"Parsing Date Boundaries")
     min_date, max_date = get_date_bounds(args)
+    if max_date < min_date:
+        raise ValueError("Maximum Date in arguments occurs before minimum date!")
     ## Make Predictions
     y_pred, feature_range = predict_and_interpret(filenames,
                                                   model,
@@ -232,7 +246,8 @@ def main():
                                                   n_samples=args.n_samples,
                                                   randomized=args.randomized,
                                                   bootstrap_samples=args.bootstrap_samples,
-                                                  bootstrap_sample_percent=args.bootstrap_sample_percent)
+                                                  bootstrap_sample_percent=args.bootstrap_sample_percent,
+                                                  ignore_missing=not args.keep_missing)
     ## Plot Feature Range (Top Values)
     LOGGER.info("Visualizing Feature Reponsibilities")
     fig, ax = plot_feature_range(feature_range,
