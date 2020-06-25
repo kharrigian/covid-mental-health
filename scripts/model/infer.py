@@ -30,6 +30,14 @@ from mhlib.preprocess.tokenizer import STOPWORDS
 ## Logging
 LOGGER = initialize_logger()
 
+## Load COVID Resources
+COVID_TERM_FILE = "./data/resources/covid_terms.json"
+COVID_SUBREDDIT_FILE = "./data/resources/covid_subreddits.json"
+with open(COVID_TERM_FILE,"r") as the_file:
+    COVID_TERMS = json.load(the_file)
+with open(COVID_SUBREDDIT_FILE,"r") as the_file:
+    COVID_SUBREDDITS = json.load(the_file)
+
 #######################
 ### Functions
 #######################
@@ -86,6 +94,10 @@ def parse_arguments():
                         action="store_true",
                         default=False,
                         help="If included, will make predictions for users without any features")
+    parser.add_argument("--keep_covid",
+                        action="store_true",
+                        default=False,
+                        help="If included, will not filter out COVID-related posts or subreddits")
     ## Parse Arguments
     args = parser.parse_args()
     ## Check Arguments
@@ -122,6 +134,20 @@ def get_date_bounds(args):
     else:
         max_date = pd.to_datetime(args.max_date)
     return min_date, max_date
+
+def update_filter_set(model,
+                      filter_subreddits=None,
+                      filter_terms=None):
+    """
+
+    """
+    ## Add to Filter Terms
+    if filter_terms is not None:
+        model.vocab._loader._ignore_terms.update(filter_terms)
+    ## Add to Filter Subreddits
+    if filter_subreddits is not None:
+        model.vocab._loader._ignore_subreddits.update(filter_subreddits)
+    return model
 
 def predict_and_interpret(filenames,
                           model,
@@ -233,6 +259,16 @@ def main():
     ## Load Model
     LOGGER.info(f"Loading Model: {args.model}")
     model = joblib.load(args.model)
+    ## Append to Filter Set
+    if args.keep_covid:
+        filter_terms = None
+        filter_subreddits = None
+    else:
+        filter_terms = COVID_TERMS["covid"]
+        filter_subreddits = COVID_SUBREDDITS["covid"]
+    model = update_filter_set(model,
+                              filter_terms=filter_terms,
+                              filter_subreddits=filter_subreddits)
     ## Get Date Boundaries
     LOGGER.info(f"Parsing Date Boundaries")
     min_date, max_date = get_date_bounds(args)
