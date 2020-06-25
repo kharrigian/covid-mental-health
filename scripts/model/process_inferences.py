@@ -4,7 +4,7 @@
 ####################
 
 ## Result Directory
-RESULTS_DIR = "./data/results/reddit/inference/"
+RESULTS_DIR = "./data/results/reddit/inference/quarterly/"
 
 ## Condition
 CONDITION = "depression"
@@ -85,7 +85,7 @@ predictions = pd.DataFrame(predictions)
 dates = pd.to_datetime(predictions.columns)
 
 ## Population-level Bootstrap
-pred_CI = bootstrap_sample(predictions.values,
+pred_CI = bootstrap_sample(predictions.dropna().values,
                            func=np.nanmean,
                            axis=0,
                            sample_percent=30,
@@ -103,40 +103,42 @@ ax.errorbar(pred_CI.index,
                             (pred_CI["upper"]-pred_CI["median"]).values]),
             color="C0",
             linewidth=2,
-            label="95% Confidence Interval")
+            label="95% Confidence Interval",
+            marker="o",
+            linestyle="--")
 ax.set_xlabel("Date Start", fontweight="bold")
 ax.set_ylabel(f"Mean Pr({CONDITION.title()})", fontweight="bold")
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.legend(loc="upper left", frameon=True)
 fig.tight_layout()
-fig.savefig(f"plots/inferences_population_level_{CONDITION}.png", dpi=300)
+fig.savefig(f"{RESULTS_DIR}inferences_population_level_{CONDITION}.png", dpi=300)
 plt.close()
 
 ####################
 ### Visualize Individual Level
 ####################
 
-## Bin Predictions
-bin_function = lambda x: int(np.floor(x * 10)) if not pd.isnull(x) else np.nan
-predictions_binned = predictions.applymap(bin_function)
+# ## Bin Predictions
+# bin_function = lambda x: int(np.floor(x * 10)) if not pd.isnull(x) else np.nan
+# predictions_binned = predictions.applymap(bin_function)
 
-## Compute Transition Matrices
-tm = {}
-for start, end in zip(predictions_binned.columns[:-1], predictions_binned.columns[1:]):
-    x = predictions_binned[[start, end]].rename(columns={start:"start",end:"end"})
-    x = x.dropna().astype(int)
-    tm_ = metrics.confusion_matrix(x["start"], x["end"], labels=list(range(10)))
-    tm[(start, end)] = tm_
+# ## Compute Transition Matrices
+# tm = {}
+# for start, end in zip(predictions_binned.columns[:-1], predictions_binned.columns[1:]):
+#     x = predictions_binned[[start, end]].rename(columns={start:"start",end:"end"})
+#     x = x.dropna().astype(int)
+#     tm_ = metrics.confusion_matrix(x["start"], x["end"], labels=list(range(10)))
+#     tm[(start, end)] = tm_
 
-## Plot Transition Matrix
-fig, ax = plt.subplots(1, len(tm))
-for i, ((start, end), matrix) in enumerate(tm.items()):
-    ax[i].imshow(np.log(matrix),
-                 cmap=plt.cm.Purples,
-                 aspect="auto")
-    ax[i].set_ylabel(start, fontsize=6)
-    ax[i].set_xlabel(end, fontsize=6)
-fig.tight_layout()
-plt.savefig("test.png", dpi=300)
-plt.close()
+# ## Plot Transition Matrix
+# fig, ax = plt.subplots(1, len(tm))
+# for i, ((start, end), matrix) in enumerate(tm.items()):
+#     ax[i].imshow(np.log(matrix),
+#                  cmap=plt.cm.Purples,
+#                  aspect="auto")
+#     ax[i].set_ylabel(start, fontsize=6)
+#     ax[i].set_xlabel(end, fontsize=6)
+# fig.tight_layout()
+# plt.savefig("test.png", dpi=300)
+# plt.close()
