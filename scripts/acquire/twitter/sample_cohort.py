@@ -120,7 +120,7 @@ ax.set_yscale("log")
 ax.set_xlabel("# Tweets",fontweight="bold")
 ax.set_ylabel("# Users",fontweight="bold")
 fig.tight_layout()
-plt.savefig("./plots/post_distribution.png")
+plt.savefig("./plots/twitter_post_distribution.png")
 plt.close(fig)
 
 ## Compute Post Distribution (Posts Per Day)
@@ -141,7 +141,7 @@ ax.set_ylabel("# Posts (10k)", fontweight="bold")
 ax.legend(loc="upper right",frameon=True)
 fig.autofmt_xdate()
 fig.tight_layout()
-plt.savefig("./plots/post_distribution_time.png")
+plt.savefig("./plots/twitter_post_distribution_time.png")
 plt.close(fig)
 
 ##################
