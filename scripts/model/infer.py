@@ -156,7 +156,7 @@ def predict_and_interpret(filenames,
                           n_samples=None,
                           randomized=False,
                           bootstrap_samples=100,
-                          bootstrap_sample_percent=70,
+                          bootstrap_sample_percent=30,
                           ignore_missing=True):
     """
 
