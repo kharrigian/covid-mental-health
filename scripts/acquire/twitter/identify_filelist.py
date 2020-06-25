@@ -45,9 +45,8 @@ print("Found {} files in {}".format(len(filepaths), rootpath))
 #################
 
 ## Write Filepaths to a .txt File
-outfile = f"{outpath}source_filenames.txt"
-print("Saved list to {}".format(outfile))
-with open(outfile,"w") as the_file:
+print("Saved list to {}".format(outpath))
+with open(outpath,"w") as the_file:
 	for f in filepaths:
 		the_file.write(f"{f}\n")
 
