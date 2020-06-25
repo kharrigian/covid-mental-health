@@ -5,8 +5,8 @@
 
 ## Schedule Configuration
 MODEL_FILE = "20200623144030-SMHD-Depression/model.joblib"
-START_DATE = "2020-01-01"
-END_DATE = "2020-06-01"
+START_DATE = "2017-01-01"
+END_DATE = "2020-07-01"
 FREQ = "QS-JAN"
 USERNAME = "kharrigian"
 
@@ -71,7 +71,7 @@ def hold_for_complete_jobs(scheduled_jobs):
         if len(newly_completed_jobs) == 0:
             if sleep_count % 5 == 0:
                 LOGGER.info("Inference jobs still running. Continuing to sleep.")
-            sleep(120)
+            sleep(20)
             sleep_count += 1
         else:
             complete_jobs.extend(newly_completed_jobs)
@@ -104,11 +104,11 @@ conda activate mental-health
 ## Move To Run Directory
 cd /export/fs03/a08/kharrigian/covid-mental-health/
 ## Run Script
-python ./scripts/model/infer.py \
-       /export/fs03/a08/kharrigian/mental-health/models/falconet/{}" \
-       --input /export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/histories/ \
-       --output_folder /export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/inference/{}_{}/" \
-       --min_date {} \
+python ./scripts/model/infer.py \\
+       /export/fs03/a08/kharrigian/mental-health/models/falconet/{} \\
+       --input /export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/histories/ \\
+       --output_folder /export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/inference/{}_{}/ \\
+       --min_date {} \\
        --max_date {}
 """
 
