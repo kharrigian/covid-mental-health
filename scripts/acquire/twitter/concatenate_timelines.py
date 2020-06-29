@@ -5,6 +5,9 @@ DATA_DIR = "./data/raw/twitter/timelines/"
 ## Whether or not to remove the temporary data directory
 REMOVE_TEMP = False
 
+## Multiprocessing Jobs
+NUM_JOBS = 8
+
 ##################
 ### Imports
 ##################
@@ -15,31 +18,28 @@ import sys
 import json
 import gzip
 from glob import glob
+from functools import partial
+from multiprocessing import Pool
 
 ## External 
 from tqdm import tqdm
+from mhlib.util.logging import initialize_logger
 
 ##################
-### Concatenate User Files
+### Globals/Helpers
 ##################
 
-## Find Files in Temp Directory
-files = glob(f"{DATA_DIR}temp/*/*.gz")
+## Logger
+LOGGER = initialize_logger()
 
-## Map Users to their Files
-get_user_id = lambda i: os.path.basename(i).rstrip(".json.gz")
-user_files = {}
-for f in files:
-    uid = get_user_id(f)
-    if uid not in user_files:
-        user_files[uid] = []
-    user_files[uid].append(f)
+## Concatenation
+def concatenate_user(user,
+                     user_file_map):
+    """
 
-## Cycle Through Users
-for user, files in tqdm(user_files.items(),
-                        total=len(user_files),
-                        desc="Concatenating User",
-                        file=sys.stdout):
+    """
+    ## Get Files
+    files = user_file_map[user]
     ## Combine Tweets (Unique)
     user_cache = []
     tweet_ids = set()
@@ -54,6 +54,35 @@ for user, files in tqdm(user_files.items(),
     with gzip.open(outfile, "wt", encoding="utf-8") as the_file:
         json.dump(user_cache, the_file)
 
+##################
+### Concatenate User Files
+##################
+
+## Find Files in Temp Directory
+LOGGER.info("Identifying Temporary User Files")
+files = glob(f"{DATA_DIR}temp/*/*.gz")
+
+## Map Users to their Files
+get_user_id = lambda i: os.path.basename(i).rstrip(".json.gz")
+user_files = {}
+for f in tqdm(files, desc="Grouping User Files"):
+    uid = get_user_id(f)
+    if uid not in user_files:
+        user_files[uid] = []
+    user_files[uid].append(f)
+
+## Cycle Through Users
+mp = Pool(NUM_JOBS)
+mp_helper = partial(concatenate_user, user_file_map=user_files)
+_ = list(tqdm(mp.imap_unordered(mp_helper, sorted(user_files.keys())),
+              total=len(user_files),
+              desc="Concatenating User Files",
+              file=sys.stdout))
+mp.close()
+
 ## Remove Temp Directory
 if REMOVE_TEMP:
+    LOGGER.info("Removing Temporary Directory")
     _ = os.system("rm -rf {DATA_DIR}temp/")
+
+LOGGER.info("Script complete!")
