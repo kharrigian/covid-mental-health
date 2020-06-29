@@ -4,10 +4,13 @@
 ####################
 
 ## Result Directory
-RESULTS_DIR = "./data/results/reddit/inference/quarterly/"
+RESULTS_DIR = "./data/results/reddit/inference/weekly/"
 
 ## Condition
 CONDITION = "depression"
+
+## Parameters
+POS_THRESHOLD = 0.5
 
 ####################
 ### Imports
@@ -77,6 +80,9 @@ for pred_file in sorted(pred_files):
         predictions[start] = json.load(the_file)
 predictions = pd.DataFrame(predictions)
 
+## Binarize Predictions
+predictions_binary = predictions.applymap(lambda x: x > POS_THRESHOLD if not pd.isnull(x) else np.nan)
+
 ####################
 ### Visualize Population Level
 ####################
@@ -95,25 +101,39 @@ pred_CI = pd.DataFrame(pred_CI.T,
                        columns=["lower","median","upper"])
 pred_CI["n"] = (~predictions.isnull()).sum(axis=0)
 
-## Visualize Populatinon Level Predictions
-fig, ax = plt.subplots(figsize=(10,5.8))
-ax.errorbar(pred_CI.index,
-            pred_CI["median"],
-            yerr=np.vstack([(pred_CI["median"]-pred_CI["lower"]).values,
-                            (pred_CI["upper"]-pred_CI["median"]).values]),
-            color="C0",
-            linewidth=2,
-            label="95% Confidence Interval",
-            marker="o",
-            linestyle="--")
-ax.set_xlabel("Date Start", fontweight="bold")
-ax.set_ylabel(f"Mean Pr({CONDITION.title()})", fontweight="bold")
-ax.spines["top"].set_visible(False)
-ax.spines["right"].set_visible(False)
-ax.legend(loc="upper left", frameon=True)
-fig.tight_layout()
-fig.savefig(f"{RESULTS_DIR}inferences_population_level_{CONDITION}.png", dpi=300)
-plt.close()
+## Population-Level Binary
+pred_CI_binary = bootstrap_sample(predictions_binary.dropna().values,
+                                  func=np.nanmean,
+                                  axis=0,
+                                  sample_percent=30,
+                                  samples=250)
+pred_CI_binary = pd.DataFrame(pred_CI_binary.T,
+                              index=dates,
+                              columns=["lower","median","upper"])
+pred_CI_binary["n"] = (~predictions_binary.isnull()).sum(axis=0)
+
+## Visualize Population-Level Predictions
+for CI, CI_name, ylbl in zip([pred_CI, pred_CI_binary],
+                       ["population_level","population_level_binary"],
+                       [f"Mean Pr({CONDITION.title()})", f"Percent Pr({CONDITION.title()}) > {POS_THRESHOLD}"]):
+    fig, ax = plt.subplots(figsize=(10,5.8))
+    ax.errorbar(CI.index,
+                CI["median"],
+                yerr=np.vstack([(CI["median"]-CI["lower"]).values,
+                                (CI["upper"]-CI["median"]).values]),
+                color="C0",
+                linewidth=2,
+                label="95% Confidence Interval",
+                marker="o",
+                linestyle="--")
+    ax.set_xlabel("Date Start", fontweight="bold")
+    ax.set_ylabel(ylbl, fontweight="bold")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.legend(loc="upper left", frameon=True)
+    fig.tight_layout()
+    fig.savefig(f"{RESULTS_DIR}inferences_{CI_name}_{CONDITION}.png", dpi=300)
+    plt.close()
 
 ####################
 ### Visualize Individual Level
