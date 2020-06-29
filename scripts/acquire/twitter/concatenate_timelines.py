@@ -2,6 +2,9 @@
 ## Where temp directory of data files currently lives
 DATA_DIR = "./data/raw/twitter/timelines/"
 
+## Whether or not to remove the temporary data directory
+REMOVE_TEMP = False
+
 ##################
 ### Imports
 ##################
@@ -52,4 +55,5 @@ for user, files in tqdm(user_files.items(),
         json.dump(user_cache, the_file)
 
 ## Remove Temp Directory
-_ = os.system("rm -rf {DATA_DIR}temp/")
+if REMOVE_TEMP:
+    _ = os.system("rm -rf {DATA_DIR}temp/")
