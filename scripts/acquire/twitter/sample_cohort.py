@@ -152,7 +152,7 @@ plt.close(fig)
 min_time_bin_threshold = 5
 
 ## Time Bins (Month of Year)
-time_bins = [(d.year, d.isocalendar()[1]) for d in dates]
+time_bins = [(d.year, d.month) for d in dates]
 time_bins_index = {}
 for tb in sorted(set(time_bins)):
     time_bins_index[tb] = [i for i,b in enumerate(time_bins) if b == tb]
@@ -164,7 +164,8 @@ for i, (tb, ind) in enumerate(time_bins_index.items()):
 X_agg = hstack(X_agg).tocsr()
 
 ## Identify Cohort (Filter Based on Time Bin Posts)
-cohort_mask = np.array((X_agg>=min_time_bin_threshold).sum(axis=1)==X_agg.shape[1]).T[0]
+filled_rows = (X_agg>=min_time_bin_threshold).sum(axis=1).max()
+cohort_mask = np.array((X_agg>=min_time_bin_threshold).sum(axis=1)==filled_rows).T[0]
 cohort_mask = np.nonzero(cohort_mask)[0]
 cohort_users = [users[i] for i in cohort_mask]
 cohort_X = X[cohort_mask].toarray()
