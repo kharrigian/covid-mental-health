@@ -6,7 +6,7 @@ DATA_DIR = "./data/raw/twitter/timelines/"
 REMOVE_TEMP = False
 
 ## Multiprocessing Jobs
-NUM_JOBS = 8
+NUM_JOBS = 16
 
 ##################
 ### Imports
@@ -18,7 +18,6 @@ import sys
 import json
 import gzip
 from glob import glob
-from functools import partial
 from multiprocessing import Pool
 
 ## External 
@@ -26,20 +25,23 @@ from tqdm import tqdm
 from mhlib.util.logging import initialize_logger
 
 ##################
-### Globals/Helpers
+### Globals
 ##################
 
 ## Logger
 LOGGER = initialize_logger()
 
+##################
+### Helpers
+##################
+
 ## Concatenation
-def concatenate_user(user,
-                     user_file_map):
+def concatenate_user(user):
     """
 
     """
     ## Get Files
-    files = user_file_map[user]
+    files = user_files[user]
     ## Combine Tweets (Unique)
     user_cache = []
     tweet_ids = set()
@@ -73,8 +75,7 @@ for f in tqdm(files, desc="Grouping User Files"):
 
 ## Cycle Through Users
 mp = Pool(NUM_JOBS)
-mp_helper = partial(concatenate_user, user_file_map=user_files)
-_ = list(tqdm(mp.imap_unordered(mp_helper, sorted(user_files.keys())),
+_ = list(tqdm(mp.imap_unordered(concatenate_user, sorted(user_files.keys())),
               total=len(user_files),
               desc="Concatenating User Files",
               file=sys.stdout))
