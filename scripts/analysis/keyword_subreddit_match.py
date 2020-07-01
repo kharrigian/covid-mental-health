@@ -1,14 +1,21 @@
 
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/histories/"
+# DATA_DIR = "./data/processed/reddit/histories/"
+DATA_DIR = "./data/processed/twitter/timelines/"
 
 ## Random Sampling
 SAMPLE_RATE = 0.1
 SAMPLE_SEED = 42
 
+## Platform
+# PLATFORM = "reddit"
+PLATFORM = "twitter"
+
 ## Date Boundaries
-START_DATE = "2008-01-01"
-END_DATE = "2020-05-01"
+# START_DATE = "2008-01-01"
+# END_DATE = "2020-05-01"
+START_DATE = "2018-01-01"
+END_DATE = "2020-06-20"
 
 ## Multiprocessing
 NUM_JOBS = 8
@@ -26,7 +33,6 @@ import json
 import random
 from glob import glob
 from datetime import datetime
-from functools import partial
 from multiprocessing import Pool
 from collections import Counter
 
@@ -73,24 +79,24 @@ def pattern_match(text,
                 matches.append(p)
     return matches
 
-def match_post(post,
-               match_dict):
+def match_post(post):
     """
 
     """    
     ## Cycle Through Options
     match_found = False
     match_cache = {}
-    for category in match_dict.keys():
-        if post["subreddit"].lower() in match_dict[category]["subreddits"]:
-            if category not in match_cache:
-                match_cache[category] = {}
-            match_cache[category]["subreddits"] = post["subreddit"].lower()
-            match_found = True
-        if match_dict[category]["use_tokens"]:
-            term_matches = pattern_match(post["text_tokenized"], match_dict[category]["terms"])
+    for category in MATCH_DICT.keys():
+        if PLATFORM == "reddit":
+            if post["subreddit"].lower() in MATCH_DICT[category]["subreddits"]:
+                if category not in match_cache:
+                    match_cache[category] = {}
+                match_cache[category]["subreddits"] = post["subreddit"].lower()
+                match_found = True
+        if MATCH_DICT[category]["use_tokens"]:
+            term_matches = pattern_match(post["text_tokenized"], MATCH_DICT[category]["terms"])
         else:
-            term_matches = pattern_match(post["text"], match_dict[category]["terms"])
+            term_matches = pattern_match(post["text"], MATCH_DICT[category]["terms"])
         if len(term_matches) > 0:
             if category not in match_cache:
                 match_cache[category] = {}
@@ -100,12 +106,16 @@ def match_post(post,
     if not match_found:
         return None
     post_match_cache = {"matches":match_cache}
-    for val in ["user_id_str","created_utc","comment_id","text","subreddit"]:
+    meta_cols = ["user_id_str","created_utc","text"]
+    if PLATFORM == "reddit":
+        meta_cols.extend(["comment_id","subreddit"])
+    elif PLATFORM == "twitter":
+        meta_cols.append("tweet_id")
+    for val in meta_cols:
         post_match_cache[val] = post[val]
     return post_match_cache
 
-def find_matches(filename,
-                 match_dict):
+def find_matches(filename):
     """
 
     """
@@ -124,8 +134,7 @@ def find_matches(filename,
             else:
                 n_seen += 1
                 timestamps.append(datetime.fromtimestamp(post["created_utc"]))
-                post_matches = match_post(post,
-                                          match_dict)
+                post_matches = match_post(post)
                 if post_matches is not None:
                     matches.append(post_matches)
     ## Format Timestamps
@@ -133,16 +142,14 @@ def find_matches(filename,
     timestamps = Counter(timestamps)
     return filename, matches, n, n_seen, timestamps
 
-def search_files(filenames,
-                 match_dict):
+def search_files(filenames):
     """
 
     """
-    ## Parameterize Helper
-    helper = partial(find_matches, match_dict=match_dict)
+
     ## Run Lookup
     mp = Pool(NUM_JOBS)
-    res = list(tqdm(mp.imap_unordered(helper, filenames), total=len(filenames), desc="Searching For Matches"))
+    res = list(tqdm(mp.imap_unordered(find_matches, filenames), total=len(filenames), desc="Searching For Matches"))
     mp.close()
     ## Parse
     filenames = [r[0] for r in res]
@@ -255,7 +262,7 @@ with open(COVID_SUBREDDIT_FILE,"r") as the_file:
 ###################
 
 ## Match Dictionary
-match_dict = {
+MATCH_DICT = {
     "mental_health":{
         "terms":set(MH_TERMS["terms"]["smhd"]),
         "subreddits":set(MH_SUBREDDITS["all"]),
@@ -282,8 +289,7 @@ match_dict = {
 filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
 
 ## Look For Matches
-filenames, matches, n, n_seen, timestamps = search_files(filenames,
-                                                         match_dict)
+filenames, matches, n, n_seen, timestamps = search_files(filenames)
  
 ###################
 ### Summarize Matches
@@ -308,26 +314,25 @@ date_range = pd.date_range(START_DATE,
 date_range_simple = list(map(lambda d: (d.year, d.month), date_range))
 date_range_map = dict(zip(date_range_simple, range(len(date_range_simple))))
 
-## Vectorize Match Timestamps
+## Vectorize Term Match Timestamps
 mh_term_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in mh_term_matches]).toarray()
-mh_subreddit_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in mh_subreddit_matches]).toarray()
 crisis_term_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in crisis_term_matches]).toarray()
 mh_keyword_term_ts =   vstack([vectorize_timestamps(i[0], date_range_map) for i in mh_keyword_term_matches]).toarray()
 covid_term_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in covid_term_matches]).toarray()
-covid_subreddit_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in covid_subreddit_matches]).toarray()
+
+## Vectorize Subreddit Match Timestamps
+if PLATFORM == "reddit":
+    mh_subreddit_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in mh_subreddit_matches]).toarray()
+    covid_subreddit_ts = vstack([vectorize_timestamps(i[0], date_range_map) for i in covid_subreddit_matches]).toarray()
 
 ## Vectorize General Timestamps
 tau = vstack([vectorize_timestamps(i, date_range_map) for i in timestamps]).toarray()
 
-## Normalize Match Timestamps
+## Normalize Term Match Timestamps
 mh_term_ts_norm = np.divide(mh_term_ts,
                             tau,
                             out=np.zeros_like(mh_term_ts),
                             where=tau>0)
-mh_subreddit_ts_norm = np.divide(mh_subreddit_ts,
-                                 tau,
-                                 out=np.zeros_like(mh_subreddit_ts),
-                                 where=tau>0)
 crisis_term_ts_norm = np.divide(crisis_term_ts,
                            tau,
                            out=np.zeros_like(crisis_term_ts),
@@ -340,26 +345,35 @@ covid_term_ts_norm = np.divide(covid_term_ts,
                                tau,
                                out=np.zeros_like(covid_term_ts),
                                where=tau>0)
-covid_subreddit_ts_norm = np.divide(covid_subreddit_ts,
+
+## Normalize Subreddit Match Timestamps
+if PLATFORM == "reddit":
+    mh_subreddit_ts_norm = np.divide(mh_subreddit_ts,
                                     tau,
-                                    out=np.zeros_like(covid_subreddit_ts),
+                                    out=np.zeros_like(mh_subreddit_ts),
                                     where=tau>0)
+    covid_subreddit_ts_norm = np.divide(covid_subreddit_ts,
+                                        tau,
+                                        out=np.zeros_like(covid_subreddit_ts),
+                                        where=tau>0)
 
 ## Term/Subreddit Maps
-mh_term_map = dict((y, x) for x, y in enumerate(sorted(match_dict["mental_health"]["terms"])))
-mh_subreddit_map = dict((y, x) for x, y in enumerate(sorted(match_dict["mental_health"]["subreddits"])))
-crisis_term_map = dict((y, x) for x, y in enumerate(sorted(match_dict["crisis"]["terms"])))
-mh_keyword_term_map = dict((y, x) for x, y in enumerate(sorted(match_dict["mental_health_keywords"]["terms"])))
-covid_term_map = dict((y, x) for x, y in enumerate(sorted(match_dict["covid"]["terms"])))
-covid_subreddit_map = dict((y, x) for x, y in enumerate(sorted(match_dict["covid"]["subreddits"])))
+mh_term_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["mental_health"]["terms"])))
+crisis_term_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["crisis"]["terms"])))
+mh_keyword_term_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["mental_health_keywords"]["terms"])))
+covid_term_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["covid"]["terms"])))
+if PLATFORM == "reddit":
+    mh_subreddit_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["mental_health"]["subreddits"])))
+    covid_subreddit_map = dict((y, x) for x, y in enumerate(sorted(MATCH_DICT["covid"]["subreddits"])))
 
 ## Vectorize Term Breakdowns
 mh_term_breakdown = vstack([vectorize_timestamps(flatten(i[1]), mh_term_map) for i in mh_term_matches]).toarray()
-mh_subreddit_breakdown = vstack([vectorize_timestamps(i[1], mh_subreddit_map) for i in mh_subreddit_matches]).toarray()
 crisis_term_breakdown = vstack([vectorize_timestamps(flatten(i[1]), crisis_term_map) for i in crisis_term_matches]).toarray()
 mh_keyword_term_breakdown = vstack([vectorize_timestamps(flatten(i[1]), mh_keyword_term_map) for i in mh_keyword_term_matches]).toarray()
 covid_term_breakdown = vstack([vectorize_timestamps(flatten(i[1]), covid_term_map) for i in covid_term_matches]).toarray()
-covid_subreddit_breakdown = vstack([vectorize_timestamps(i[1], covid_subreddit_map) for i in covid_subreddit_matches]).toarray()
+if PLATFORM == "reddit":
+    mh_subreddit_breakdown = vstack([vectorize_timestamps(i[1], mh_subreddit_map) for i in mh_subreddit_matches]).toarray()
+    covid_subreddit_breakdown = vstack([vectorize_timestamps(i[1], covid_subreddit_map) for i in covid_subreddit_matches]).toarray()
 
 ###################
 ### Temporal Visualization
@@ -367,11 +381,12 @@ covid_subreddit_breakdown = vstack([vectorize_timestamps(i[1], covid_subreddit_m
 
 ## Timeseries Fields to Plot
 plot_vals = [("SMHD Mental Health Terms",mh_term_ts_norm),
-             ("Mental Health Subreddits", mh_subreddit_ts_norm),
              ("JHU Crisis Terms", crisis_term_ts_norm),
              ("CLSP Mental Health Terms", mh_keyword_term_ts_norm),
-             ("COVID-19 Terms", covid_term_ts_norm),
-             ("COVID-19 Subreddits", covid_subreddit_ts_norm)]
+             ("COVID-19 Terms", covid_term_ts_norm)]
+if PLATFORM == "reddit":
+    plot_vals.insert(1, ("Mental Health Subreddits", mh_subreddit_ts_norm))
+    plot_vals.insert(-1, ("COVID-19 Subreddits", covid_subreddit_ts_norm))
 
 ## Plot Post Poportions over Time
 fig, ax = plt.subplots(len(plot_vals), 1, figsize=(10,5.8))
@@ -428,7 +443,7 @@ for p, (pname, pmatrix) in enumerate(plot_vals):
     ax[p].set_xlim(left=pd.to_datetime("2018-01-01"),right=pd.to_datetime(END_DATE))
 ax[-1].set_xlabel("Date", fontweight="bold")
 fig.tight_layout()
-plt.savefig("plots/reddit_term_subreddit_user_proportions.png", dpi=300)
+plt.savefig(f"plots/{PLATFORM}_term_subreddit_user_proportions.png", dpi=300)
 plt.close()
 
 ## Plot User Proportion Entire History
@@ -452,7 +467,7 @@ ax.set_xticks(list(range(p+1)))
 ax.set_xticklabels([i[0].replace("Term","\nTerm").replace("Subreddit","\nSubreddit") for i in plot_vals])
 ax.set_ylim(bottom=0, top=max_val + 4)
 fig.tight_layout()
-plt.savefig("plots/reddit_term_subreddit_user_proportions_overall.png", dpi=300)
+plt.savefig(f"plots/{PLATFORM}_term_subreddit_user_proportions_overall.png", dpi=300)
 plt.close()
 
 ###################
@@ -461,11 +476,12 @@ plt.close()
 
 ## Term/Subreddit Fields to Plot
 term_plot_vals = [("SMHD Mental Health Terms",mh_term_breakdown, mh_term_map),
-                  ("Mental Health Subreddits", mh_subreddit_breakdown, mh_subreddit_map),
                   ("JHU Crisis Terms", crisis_term_breakdown, crisis_term_map),
                   ("CLSP Mental Health Terms", mh_keyword_term_breakdown, mh_keyword_term_map),
-                  ("COVID-19 Terms", covid_term_breakdown, covid_term_map),
-                  ("COVID-19 Subreddits", covid_subreddit_breakdown, covid_subreddit_map)]
+                  ("COVID-19 Terms", covid_term_breakdown, covid_term_map)]
+if PLATFORM == "reddit":
+    term_plot_vals.insert(1, ("Mental Health Subreddits", mh_subreddit_breakdown, mh_subreddit_map))
+    term_plot_vals.insert(-1, ("COVID-19 Subreddits", covid_subreddit_breakdown, covid_subreddit_map))
 
 ## Plot Frequencies
 for group, group_breakdown, group_map in term_plot_vals:
@@ -491,5 +507,5 @@ for group, group_breakdown, group_map in term_plot_vals:
     fig.suptitle(group, y=.98, fontweight="bold")
     fig.tight_layout()
     fig.subplots_adjust(top=.94)
-    fig.savefig("plots/top_{}.png".format(group.lower().replace(" ","_")), dpi=300)
+    fig.savefig("plots/top_{}_{}.png".format(group.lower().replace(" ","_"), PLATFORM), dpi=300)
     plt.close()

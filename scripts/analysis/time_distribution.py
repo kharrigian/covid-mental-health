@@ -1,10 +1,16 @@
 
+## Platform
+PLATFORM = "twitter"
+
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/histories/"
+DATA_DIR = "./data/processed/twitter/timelines/"
 
 ## Date Boundaries
 START_DATE = "2018-01-01"
 END_DATE = "2020-06-01"
+
+## Parameters
+IGNORE_RETWEETS = True
 
 ## Multiprocessing
 NUM_JOBS = 8
@@ -19,7 +25,6 @@ import sys
 import gzip
 import json
 from glob import glob
-from functools import partial
 from datetime import datetime
 from collections import Counter
 from multiprocessing import Pool
@@ -47,8 +52,7 @@ _ = register_matplotlib_converters()
 ### Helpers
 ###################
 
-def count_timestamps(filename,
-                     date_range_map):
+def count_timestamps(filename):
     """
 
     """
@@ -56,6 +60,8 @@ def count_timestamps(filename,
     timestamps = []
     with gzip.open(filename, "r") as the_file:
         for comment in json.load(the_file):
+            if IGNORE_RETWEETS and comment["text"].startswith("RT"):
+                continue
             timestamps.append(comment["created_utc"])
     ## Format Timestamps
     timestamps = list(map(datetime.fromtimestamp, timestamps))
@@ -76,9 +82,8 @@ def load_timestamp_distribution(filenames,
 
     """
     ## Count Timestamps
-    mp_helper = partial(count_timestamps, date_range_map=date_range_map)
     mp = Pool(NUM_JOBS)
-    res = list(tqdm(mp.imap_unordered(mp_helper, filenames), total=len(filenames), file=sys.stdout))
+    res = list(tqdm(mp.imap_unordered(count_timestamps, filenames), total=len(filenames), file=sys.stdout))
     mp.close()
     ## Parse Result
     tau = vstack([r[0] for r in res])
@@ -126,7 +131,7 @@ ax.set_xlabel("Month")
 ax.set_ylabel("# Posts per User")
 fig.autofmt_xdate()
 fig.tight_layout()
-plt.savefig("./plots/reddit_post_distribution_time.png", dpi=300)
+plt.savefig(f"./plots/{PLATFORM}_post_distribution_time.png", dpi=300)
 plt.close()
 
 ## Calculate User Consistency Matrix
@@ -157,5 +162,5 @@ ax.set_xlabel("Start Date")
 ax.set_ylabel("Minimum Post Frequency")
 ax.set_ylim(len(thresholds)-.5, -.5)
 fig.tight_layout()
-plt.savefig("./plots/reddit_post_consistency_matrix.png", dpi=300)
+plt.savefig(f"./plots/{PLATFORM}_post_consistency_matrix.png", dpi=300)
 plt.close(fig)
