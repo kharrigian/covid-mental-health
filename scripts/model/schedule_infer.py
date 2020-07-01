@@ -3,12 +3,23 @@
 ### Configuration
 ######################
 
-## Schedule Configuration
-MODEL_FILE = "20200623144030-SMHD-Depression/model.joblib"
-START_DATE = "2017-01-01"
+## CLSP Grid Configuration
+USERNAME = "kharrigian"
+
+## Inference Configuration
+# MODEL_FILE = "20200623144030-SMHD-Depression/model.joblib"
+# START_DATE = "2017-01-01"
+# END_DATE = "2020-07-01"
+# FREQ = "QS-JAN"
+# RUN_NAME = "monthly"
+# PLATFORM = "reddit"
+
+MODEL_FILE = "20200617223925-Multitask-Depression/model.joblib"
+START_DATE = "2018-01-01"
 END_DATE = "2020-07-01"
 FREQ = "QS-JAN"
-USERNAME = "kharrigian"
+RUN_NAME = "monthly"
+PLATFORM = "twitter"
 
 ######################
 ### Imports
@@ -85,14 +96,22 @@ def hold_for_complete_jobs(scheduled_jobs):
 ### Execution
 ######################
 
+## Inputs
+if PLATFORM == "reddit":
+    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/histories/"
+    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/"
+else:
+    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/timelines/"
+    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/"
+
 ## Base Script
 BASE_SCRIPT = """
 #!/bin/bash
 #$ -cwd
 #$ -S /bin/bash
 #$ -m eas
-#$ -e /home/kharrigian/gridlogs/python/covid_infer_reddit_{}.err
-#$ -o /home/kharrigian/gridlogs/python/covid_infer_reddit_{}.out
+#$ -e /home/kharrigian/gridlogs/python/covid_infer_{}_{}.err
+#$ -o /home/kharrigian/gridlogs/python/covid_infer_{}_{}.out
 #$ -pe smp 8
 #$ -l 'gpu=0,mem_free=32g,ram_free=32g'
 
@@ -100,14 +119,14 @@ BASE_SCRIPT = """
 cd /home/kharrigian/
 ## Activate Conda Environment
 source .bashrc
-conda activate mental-health
+conda activate covid-mental-health
 ## Move To Run Directory
 cd /export/fs03/a08/kharrigian/covid-mental-health/
 ## Run Script
 python ./scripts/model/infer.py \\
        /export/fs03/a08/kharrigian/mental-health/models/falconet/{} \\
-       --input /export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/histories/ \\
-       --output_folder /export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/inference/{}_{}/ \\
+       --input {} \\
+       --output_folder {}inference/{}/{}_{}/ \\
        --min_date {} \\
        --max_date {}
 """
@@ -130,9 +149,14 @@ script_files = []
 for min_date, max_date in zip(DATE_RANGE[:-1], DATE_RANGE[1:]):
     ## Format Script
     date_script = BASE_SCRIPT.format(
+        RUN_NAME,
         min_date,
+        RUN_NAME,
         min_date,
         MODEL_FILE,
+        input_dir,
+        output_dir,
+        RUN_NAME,
         min_date,
         max_date,
         min_date,
