@@ -26,3 +26,6 @@ data/processed
 
 ## Credentials
 config.json
+
+## Miscellaneous
+temp_scheduler/
