@@ -11,6 +11,7 @@ import gzip
 import argparse
 from glob import glob
 from datetime import datetime
+from multiprocessing import Pool
 
 ## External Library
 import joblib
@@ -174,18 +175,35 @@ def predict_and_interpret(filenames,
                                                 max_date=max_date,
                                                 n_samples=n_samples, 
                                                 randomized=randomized)
+    ## Count Documents Per File
+    n = np.zeros(len(test_files))
+    for i, f in tqdm(enumerate(test_files), desc="Counting Support", file=sys.stdout, total=len(test_files)):
+        n[i] += len(model.vocab._loader.load_user_data(f,
+                                                       min_date=min_date,
+                                                       max_date=max_date,
+                                                       n_samples=n_samples,
+                                                       randomized=randomized))
     ## Ignore Users without any features
     if ignore_missing:
         LOGGER.info("Filtering Out Users Without Any Recognized Terms")
         missing_mask = np.nonzero((X_test!=0).any(axis=1))[0]
         test_files = [test_files[m] for m in missing_mask]
         X_test = X_test[missing_mask]
+        n = n[missing_mask]
+    ## Count Tokens
+    tn = X_test.sum(axis=1)
+    tn_binary = (X_test>0).sum(axis=1)
     ## Apply Any Additional Preprocessing
     LOGGER.info("Generating Feature Set")
     X_test = model.preprocessor.transform(X_test)    
     ## Feed Forward
+    LOGGER.info("Computing Logits")
     support = np.multiply(X_test, model.model.coef_)
     logits = support.sum(axis=1) + model.model.intercept_
+    ## Get Predictions
+    LOGGER.info("Computing Probabilities")
+    p = 1 / (1 + np.exp(-logits))
+    y_pred = dict(zip(test_files, p))
     ## Get Features
     feature_names = model.get_feature_names()
     ## Get Feature Range (Bootstrap used for Confidence Intervals)
@@ -198,10 +216,7 @@ def predict_and_interpret(filenames,
     feature_range = pd.DataFrame(feature_range.T,
                                  index=feature_names,
                                  columns=["lower","median","upper"])
-    ## Get Predictions
-    p = 1 / (1 + np.exp(-logits))
-    y_pred = dict(zip(test_files, p))
-    return y_pred, feature_range
+    return y_pred, feature_range, n, tn, tn_binary
 
 def plot_feature_range(feature_range,
                        condition,
@@ -275,15 +290,30 @@ def main():
     if max_date < min_date:
         raise ValueError("Maximum Date in arguments occurs before minimum date!")
     ## Make Predictions
-    y_pred, feature_range = predict_and_interpret(filenames,
-                                                  model,
-                                                  min_date=min_date,
-                                                  max_date=max_date,
-                                                  n_samples=args.n_samples,
-                                                  randomized=args.randomized,
-                                                  bootstrap_samples=args.bootstrap_samples,
-                                                  bootstrap_sample_percent=args.bootstrap_sample_percent,
-                                                  ignore_missing=not args.keep_missing)
+    y_pred, feature_range, n, tn, tn_binary = predict_and_interpret(filenames,
+                                                                    model,
+                                                                    min_date=min_date,
+                                                                    max_date=max_date,
+                                                                    n_samples=args.n_samples,
+                                                                    randomized=args.randomized,
+                                                                    bootstrap_samples=args.bootstrap_samples,
+                                                                    bootstrap_sample_percent=args.bootstrap_sample_percent,
+                                                                    ignore_missing=not args.keep_missing)
+    ## Combine Predictions and Support
+    y_pred = pd.DataFrame(pd.Series(y_pred),columns=["y_pred"])
+    y_pred["support"] = n
+    y_pred["matched_tokens"] = tn
+    y_pred["unique_matched_tokens"] = tn_binary
+    y_pred = y_pred.reset_index().rename(columns={"index":"filename"})
+    ## Cache Predictions
+    pred_file = f"{args.output_folder}{model._target_disorder}.predictions.csv"
+    support_file = f"{args.output_folder}{model._target_disorder}.feature_responsibility.csv"
+    LOGGER.info(f"Caching Predictions at: {pred_file}")
+    y_pred.to_csv(pred_file, index=False) 
+    ## Cache Feature Range
+    LOGGER.info(f"Caching Feature Reponsibilities at : {support_file}")
+    feature_range.to_csv(support_file)
+    LOGGER.info("Script Complete!")
     ## Plot Feature Range (Top Values)
     LOGGER.info("Visualizing Feature Reponsibilities")
     fig, ax = plot_feature_range(feature_range,
@@ -291,16 +321,7 @@ def main():
                                  k_top=20)
     fig.savefig(f"{args.output_folder}{model._target_disorder}.feature_responsibility.png", dpi=300)
     plt.close(fig)
-    ## Cache Predictions
-    pred_file = f"{args.output_folder}{model._target_disorder}.predictions.json.gz"
-    support_file = f"{args.output_folder}{model._target_disorder}.feature_responsibility.csv"
-    LOGGER.info(f"Caching Predictions at: {pred_file}")
-    with gzip.open(pred_file,"wt",encoding="utf-8") as the_file:
-        json.dump(y_pred, the_file)
-    ## Cache Feature Range
-    LOGGER.info(f"Caching Feature Reponsibilities at : {support_file}")
-    feature_range.to_csv(support_file)
-    LOGGER.info("Script Complete!")
+
 
 #######################
 ### Execute
