@@ -17,7 +17,7 @@ USERNAME = "kharrigian"
 MODEL_FILE = "20200617223925-Multitask-Depression/model.joblib"
 START_DATE = "2018-01-01"
 END_DATE = "2020-07-01"
-FREQ = "QS-JAN"
+FREQ = "MS"
 RUN_NAME = "monthly"
 PLATFORM = "twitter"
 
