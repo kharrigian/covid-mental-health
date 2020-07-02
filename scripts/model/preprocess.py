@@ -92,6 +92,14 @@ def parse_arguments():
                         type=int,
                         default=1,
                         help="Number of processes to spawn.")
+    parser.add_argument("--keep_retweets",
+                        default=False,
+                        action="store_true",
+                        help="If included, will preserve retweets in preprocessed data")
+    parser.add_argument("--keep_non_english",
+                        default=False,
+                        action="store_true",
+                        help="If included, will preserve non-English tweets in preprocessed data")
     ## Parse Arguments
     args = parser.parse_args()
     ## Check Arguments
@@ -117,7 +125,9 @@ def get_file_list(args):
         raise ValueError("Did not recognize command line --input")
 
 def process_tweet_file(f,
-                       output_folder=None):
+                       output_folder=None,
+                       keep_retweets=False,
+                       keep_non_english=False):
     """
     Process raw tweet data and cache in a processed form
 
@@ -126,6 +136,8 @@ def process_tweet_file(f,
                  desired for a single individual
         output_folder (str): Path to output folder for caching processed
                              data. If None, returns processed data itself
+        keep_retweets (bool): If True, does not filter out retweets
+        keep_non_english (bool): If True, does not filter out non-English tweets
     
     Returns:
         if output_folder is None:
@@ -157,6 +169,11 @@ def process_tweet_file(f,
                 tweet_data.append(format_tweet_data(json.loads(line)))
     ## Transform into DataFrame
     tweet_data = pd.DataFrame(tweet_data).dropna(subset=["text"])
+    ## Filtering
+    if not keep_retweets:
+        tweet_data = tweet_data.loc[~tweet_data["text"].str.startswith("RT")].reset_index(drop=True).copy()
+    if not keep_non_english:
+        tweet_data = tweet_data.loc[tweet_data["lang"]=="en"].reset_index(drop=True).copy()
     ## Tokenize Text
     tweet_data["text_tokenized"] = tweet_data["text"].map(tokenizer.tokenize)
     # ## Datetime Conversion
@@ -252,7 +269,9 @@ def main():
     ## Identity Processor
     if args.platform == "twitter":
         mp = partial(process_tweet_file,
-                     output_folder=args.output_folder)
+                     output_folder=args.output_folder,
+                     keep_retweets=args.keep_retweets,
+                     keep_non_english=args.keep_non_english)
     elif args.platform == "reddit":
         mp = partial(process_reddit_comment_file,
                      output_folder=args.output_folder)
