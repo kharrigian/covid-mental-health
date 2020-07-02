@@ -70,15 +70,25 @@ def bootstrap_sample(X,
 ####################
 
 ## Identify Prediction Files
-pred_files = glob(f"{RESULTS_DIR}*/{CONDITION}.predictions.json.gz")
+pred_files = glob(f"{RESULTS_DIR}*/{CONDITION}.predictions.csv")
 
 ## Load Predictions
 predictions = {}
+support = {}
+tokens = {}
+date_ranges = {}
 for pred_file in sorted(pred_files):
     start, stop = pred_file.split("/")[-2].split("_")
-    with gzip.open(pred_file,"r") as the_file:
-        predictions[start] = json.load(the_file)
+    date_ranges[start] = (start, stop)
+    pred_file_df = pd.read_csv(pred_file, index_col=0)
+    predictions[start] = pred_file_df["y_pred"].to_dict()
+    support[start] = pred_file_df["support"].to_dict()
+    tokens[start] = pred_file_df[["matched_tokens","unique_matched_tokens"]].apply(tuple,axis=1).to_dict()
+
+## Format
 predictions = pd.DataFrame(predictions)
+support = pd.DataFrame(support)
+tokens = pd.DataFrame(tokens)
 
 ## Binarize Predictions
 predictions_binary = predictions.applymap(lambda x: x > POS_THRESHOLD if not pd.isnull(x) else np.nan)
