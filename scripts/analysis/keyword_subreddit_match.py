@@ -414,7 +414,7 @@ for p, (pname, pmatrix) in enumerate(plot_vals):
     ax[p].set_xlim(left=pd.to_datetime("2018-01-01"),right=pd.to_datetime(END_DATE))
 ax[-1].set_xlabel("Date", fontweight="bold")
 fig.tight_layout()
-plt.savefig("plots/reddit_term_subreddit_proportions.png", dpi=300)
+plt.savefig(f"plots/{PLATFORM}_term_subreddit_proportions.png", dpi=300)
 plt.close()
 
 ## Plot User Proportions over Time
