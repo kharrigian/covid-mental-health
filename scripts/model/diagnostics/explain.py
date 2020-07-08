@@ -512,7 +512,7 @@ def plot_bow_summary(summary_dicts,
 
 def plot_matrices(x=[],
                   names=[],
-                  sample_percent=30,
+                  sample_size=100,
                   transform=lambda y: y,
                   cbar_label=None,
                   scale_bounds=None):
@@ -525,7 +525,7 @@ def plot_matrices(x=[],
     cur_ind = 0
     for _x, _n in zip(x, names):
         _x_N = _x.shape[0]
-        _x_N_sample = int(_x_N * sample_percent / 100)
+        _x_N_sample = min(sample_size, _x_N)
         _x_sample = np.random.choice(_x_N, _x_N_sample, replace=False)
         X.append(_x[_x_sample])
         name_ranges[_n] = [cur_ind, cur_ind + _x_N_sample]
@@ -640,10 +640,10 @@ def main():
     LOGGER.info("Parsing Command-line")
     args = parse_arguments()
     ## Set Seed
-    LOGGER.info("Setting random seed")
+    LOGGER.info("Setting Random Seed")
     np.random.seed(args.random_state)
     ## Output Directory
-    LOGGER.info("Initializing output directory.")
+    LOGGER.info("Initializing Output Directory")
     if not os.path.exists(args.output_folder):
         os.makedirs(args.output_folder)
     ## Load Model and Training Labels
@@ -699,7 +699,7 @@ def main():
     ## Plot Word Counts
     fig, ax = plot_matrices(x=[X_train, X_test_in, X_test_ood],
                             names=["Training", "Test (Within)", "Test (OOD)"],
-                            sample_percent=30,
+                            sample_size=100,
                             transform=lambda i: np.log10(i + 1e-10),
                             cbar_label="Word Count (log-10)")
     fig.savefig(f"{args.output_folder}matrix_bow.png", dpi=300)
@@ -730,7 +730,7 @@ def main():
     ## Plot Feature Sets
     fig, ax = plot_matrices(x=[X_train, X_test_in, X_test_ood],
                             names=["Training", "Test (Within)", "Test (OOD)"],
-                            sample_percent=30,
+                            sample_size=100,
                             transform=lambda i: i,
                             cbar_label="Feature Value",
                             scale_bounds=[1,99])
@@ -740,7 +740,7 @@ def main():
         ## Plot Raw Matrix
         fig, ax = plot_matrices(x=[X_train[:,f_ind],X_test_in[:,f_ind],X_test_ood[:,f_ind]],
                                 names=["Training", "Test (Within)", "Test (OOD)"],
-                                sample_percent=30,
+                                sample_size=100,
                                 transform=lambda i: i,
                                 cbar_label=f"Feature Value ({f_type.title()})",
                                 scale_bounds=[1,99])
@@ -802,6 +802,7 @@ def main():
                                                         n2=slbl[1])
             covariate_shift_features["task"] = model.model.coef_[0]
             covariate_shift_features.to_csv(f"{args.output_folder}covariate_shift_{sname}.csv")
+    LOGGER.info("Script Complete!")
 
 #####################
 ### Exectute
