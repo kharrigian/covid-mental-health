@@ -6,3 +6,4 @@ tweepy>=3.8.0
 mhlib
 smgeo
 carmen
+shap
