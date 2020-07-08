@@ -186,7 +186,7 @@ def predict_and_interpret(filenames,
     ## Ignore Users without any features
     if ignore_missing:
         LOGGER.info("Filtering Out Users Without Any Recognized Terms")
-        missing_mask = np.nonzero((X_test!=0).any(axis=1))[0]
+        missing_mask = np.nonzero(X_test.sum(axis=1)>0)[0]
         test_files = [test_files[m] for m in missing_mask]
         X_test = X_test[missing_mask]
         n = n[missing_mask]
