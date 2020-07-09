@@ -100,7 +100,10 @@ with gzip.open(filename,"r") as the_file:
 				continue
 			## Identify Metadata
 			user = data["user"]["id_str"]
-			ts = datetime.fromtimestamp(int(data["timestamp_ms"]) / 1e3)
+			if "timestamp_ms" in data:
+				ts = datetime.fromtimestamp(int(data["timestamp_ms"]) / 1e3)
+			else:
+				ts = datetime.strptime(data["created_at"],'%a %b %d %H:%M:%S +0000 %Y')
 			## Cache
 			tb = get_time_bin(ts, FREQ)
 			if tb not in counts:
