@@ -1,21 +1,27 @@
 
 ## Processed Data Directory
-# DATA_DIR = "./data/processed/reddit/histories/"
-DATA_DIR = "./data/processed/twitter/timelines/"
+DATA_DIR = "./data/processed/reddit/histories/"
+# DATA_DIR = "./data/processed/twitter/timelines/"
+
+## Plot Directory
+PLOT_DIR = "./plots/reddit/keywords_subreddits/"
 
 ## Random Sampling
 SAMPLE_RATE = 0.1
 SAMPLE_SEED = 42
 
 ## Platform
-# PLATFORM = "reddit"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
+# PLATFORM = "twitter"
 
 ## Date Boundaries
-# START_DATE = "2008-01-01"
-# END_DATE = "2020-05-01"
-START_DATE = "2018-01-01"
-END_DATE = "2020-06-20"
+START_DATE = "2012-01-01"
+END_DATE = "2020-05-01"
+# START_DATE = "2018-01-01"
+# END_DATE = "2020-06-20"
+
+## Date Resolution (hour, day, week, month, year)
+DATE_RES = "day"
 
 ## Multiprocessing
 NUM_JOBS = 8
@@ -32,6 +38,7 @@ import gzip
 import json
 import random
 from glob import glob
+from functools import partial
 from datetime import datetime
 from multiprocessing import Pool
 from collections import Counter
@@ -56,9 +63,41 @@ LOGGER = initialize_logger()
 ## Register Matplotlib Time Converters
 _ = register_matplotlib_converters()
 
+## Plot Directory
+if not os.path.exists(PLOT_DIR):
+    _ = os.makedirs(PLOT_DIR)
+if not os.path.exists(f"{PLOT_DIR}timeseries/"):
+    _ = os.makedirs(f"{PLOT_DIR}timeseries/")
+
 ###################
 ### Helpers
 ###################
+
+def _format_timestamp(timestamp,
+                      level="day"):
+    """
+
+    """
+    level_func = {
+            "hour": lambda x: (x.year, x.month, x.day, x.hour),
+            "day":lambda x: (x.year, x.month, x.day),
+            "week":lambda x: (x.year, timestamp.isocalendar()[1]),
+            "month":lambda x: (x.year, x.month),
+            "year":lambda x: (x.year)
+    }
+    if level not in level_func:
+        raise ValueError("'level' must be in {}".format(list(level_func.keys())))
+    return level_func.get(level)(timestamp)
+
+def format_timestamps(timestamps,
+                      level="day"):
+    """
+    Args:
+        timestamps (list):
+        level (str): One of "hour", "day", "week", "month", "year"
+    """
+    timestamps = list(map(lambda t: _format_timestamp(t, level), timestamps))
+    return timestamps
 
 def pattern_match(text,
                   patterns):
@@ -115,7 +154,8 @@ def match_post(post):
         post_match_cache[val] = post[val]
     return post_match_cache
 
-def find_matches(filename):
+def find_matches(filename,
+                 level="day"):
     """
 
     """
@@ -138,18 +178,20 @@ def find_matches(filename):
                 if post_matches is not None:
                     matches.append(post_matches)
     ## Format Timestamps
-    timestamps = [(d.year, d.month) for d in timestamps]
+    timestamps = format_timestamps(timestamps, level)
     timestamps = Counter(timestamps)
     return filename, matches, n, n_seen, timestamps
 
-def search_files(filenames):
+def search_files(filenames,
+                 date_res="day"):
     """
 
     """
 
     ## Run Lookup
     mp = Pool(NUM_JOBS)
-    res = list(tqdm(mp.imap_unordered(find_matches, filenames), total=len(filenames), desc="Searching For Matches"))
+    helper = partial(find_matches, level=date_res)
+    res = list(tqdm(mp.imap_unordered(helper, filenames), total=len(filenames), desc="Searching For Matches"))
     mp.close()
     ## Parse
     filenames = [r[0] for r in res]
@@ -161,7 +203,8 @@ def search_files(filenames):
 
 def get_match_values(post_matches,
                      category,
-                     match_type):
+                     match_type,
+                     level="day"):
     """
 
     """
@@ -174,7 +217,7 @@ def get_match_values(post_matches,
             values.append(p["matches"][category][match_type])
     ## Format
     timestamps = list(map(datetime.fromtimestamp, timestamps))
-    timestamps = list(map(lambda d: (d.year, d.month), timestamps))
+    timestamps = format_timestamps(timestamps, level)
     return timestamps, values
 
 def vectorize_timestamps(timestamps,
@@ -191,6 +234,38 @@ def vectorize_timestamps(timestamps,
         tau[date_range_map[t]] = v
     tau = csr_matrix(tau)
     return tau
+
+def terms_over_time(term_matches,
+                    term_map,
+                    date_range_map,
+                    subreddit=False):
+    """
+
+    """
+    ## Initialize Matrix
+    term_time_matrix = np.zeros((len(term_map), len(date_range_map)))
+    ## Construct Matrix
+    for f, (dates, tm) in enumerate(term_matches):
+        for dt, t in zip(dates, tm):
+            if dt not in date_range_map:
+                continue
+            dt_ind = date_range_map[dt]
+            if not subreddit:
+                for _t in t:
+                    _t_ind = term_map[_t]
+                    term_time_matrix[_t_ind, dt_ind] += 1
+            else:
+                _t_ind = term_map[t]
+                term_time_matrix[_t_ind, dt_ind] += 1
+    ## Extract Row/Column Names
+    date_range_map_rev = dict((y,x) for x, y in date_range_map.items())
+    term_map_rev = dict((y,x) for x, y in term_map.items())
+    rows = list(map(lambda i: term_map_rev[i], range(term_time_matrix.shape[0])))
+    cols = list(map(lambda i: date_range_map_rev[i], range(term_time_matrix.shape[1])))
+    cols = list(map(lambda i: datetime(*list(i)), cols))
+    ## Format into DataFrame
+    df = pd.DataFrame(term_time_matrix.T, index=cols, columns=rows)
+    return df
 
 def bootstrap_sample(X,
                      Y=None,
@@ -289,19 +364,20 @@ MATCH_DICT = {
 filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
 
 ## Look For Matches
-filenames, matches, n, n_seen, timestamps = search_files(filenames)
+filenames, matches, n, n_seen, timestamps = search_files(filenames,
+                                                         date_res=DATE_RES)
  
 ###################
 ### Summarize Matches
 ###################
 
 ## Get Values and Timestamps for each Match Category/Type
-mh_term_matches = list(map(lambda p: get_match_values(p, "mental_health", "terms"), matches))
-mh_subreddit_matches = list(map(lambda p: get_match_values(p, "mental_health", "subreddits"), matches))
-crisis_term_matches = list(map(lambda p: get_match_values(p, "crisis", "terms"), matches))
-mh_keyword_term_matches = list(map(lambda p: get_match_values(p, "mental_health_keywords", "terms"), matches))
-covid_term_matches = list(map(lambda p: get_match_values(p, "covid", "terms"), matches))
-covid_subreddit_matches = list(map(lambda p: get_match_values(p, "covid", "subreddits"), matches))
+mh_term_matches = list(map(lambda p: get_match_values(p, "mental_health", "terms", DATE_RES), matches))
+mh_subreddit_matches = list(map(lambda p: get_match_values(p, "mental_health", "subreddits",DATE_RES), matches))
+crisis_term_matches = list(map(lambda p: get_match_values(p, "crisis", "terms",DATE_RES), matches))
+mh_keyword_term_matches = list(map(lambda p: get_match_values(p, "mental_health_keywords", "terms",DATE_RES), matches))
+covid_term_matches = list(map(lambda p: get_match_values(p, "covid", "terms",DATE_RES), matches))
+covid_subreddit_matches = list(map(lambda p: get_match_values(p, "covid", "subreddits",DATE_RES), matches))
 
 ###################
 ### Temporal Analysis
@@ -310,8 +386,9 @@ covid_subreddit_matches = list(map(lambda p: get_match_values(p, "covid", "subre
 ## Date Range
 date_range = pd.date_range(START_DATE,
                            END_DATE,
-                           freq="MS")
-date_range_simple = list(map(lambda d: (d.year, d.month), date_range))
+                           freq="h")
+date_range_simple = format_timestamps(date_range, DATE_RES)
+date_range_simple = sorted(set(format_timestamps(date_range, DATE_RES)))
 date_range_map = dict(zip(date_range_simple, range(len(date_range_simple))))
 
 ## Vectorize Term Match Timestamps
@@ -375,23 +452,32 @@ if PLATFORM == "reddit":
     mh_subreddit_breakdown = vstack([vectorize_timestamps(i[1], mh_subreddit_map) for i in mh_subreddit_matches]).toarray()
     covid_subreddit_breakdown = vstack([vectorize_timestamps(i[1], covid_subreddit_map) for i in covid_subreddit_matches]).toarray()
 
+## Vectorize Terms Over Time
+mh_term_time_df = terms_over_time(mh_term_matches, mh_term_map, date_range_map)
+crisis_term_time_df = terms_over_time(crisis_term_matches, crisis_term_map, date_range_map)
+mh_keyword_term_time_df = terms_over_time(mh_keyword_term_matches, mh_keyword_term_map, date_range_map)
+covid_term_time_df = terms_over_time(covid_term_matches, covid_term_map, date_range_map)
+if PLATFORM == "reddit":
+    mh_subreddit_time_df = terms_over_time(mh_subreddit_matches, mh_subreddit_map, date_range_map, True)
+    covid_subreddit_time_df = terms_over_time(covid_subreddit_matches, covid_subreddit_map, date_range_map, True)
+
 ###################
 ### Temporal Visualization
 ###################
 
 ## Timeseries Fields to Plot
-plot_vals = [("SMHD Mental Health Terms",mh_term_ts_norm),
-             ("JHU Crisis Terms", crisis_term_ts_norm),
-             ("CLSP Mental Health Terms", mh_keyword_term_ts_norm),
-             ("COVID-19 Terms", covid_term_ts_norm)]
+plot_vals = [("SMHD Mental Health Terms",mh_term_ts_norm, mh_term_time_df),
+             ("JHU Crisis Terms", crisis_term_ts_norm, crisis_term_time_df),
+             ("CLSP Mental Health Terms", mh_keyword_term_ts_norm, mh_keyword_term_time_df),
+             ("COVID-19 Terms", covid_term_ts_norm, covid_term_time_df)]
 if PLATFORM == "reddit":
-    plot_vals.insert(1, ("Mental Health Subreddits", mh_subreddit_ts_norm))
-    plot_vals.insert(-1, ("COVID-19 Subreddits", covid_subreddit_ts_norm))
+    plot_vals.insert(1, ("Mental Health Subreddits", mh_subreddit_ts_norm, mh_subreddit_time_df))
+    plot_vals.insert(-1, ("COVID-19 Subreddits", covid_subreddit_ts_norm, covid_subreddit_time_df))
 
 ## Plot Post Poportions over Time
 fig, ax = plt.subplots(len(plot_vals), 1, figsize=(10,5.8))
-date_index = [i.date() for i in date_range]
-for p, (pname, pmatrix) in enumerate(plot_vals):
+date_index = list(map(lambda i: datetime(*list(i)), date_range_simple))
+for p, (pname, pmatrix, pdf) in enumerate(plot_vals):
     pci = bootstrap_sample(pmatrix,
                            func=np.mean,
                            sample_percent=70,
@@ -411,15 +497,15 @@ for p, (pname, pmatrix) in enumerate(plot_vals):
     ax[p].set_ylabel("Proportion\nof Posts", fontweight="bold")
     ax[p].spines["top"].set_visible(False)
     ax[p].spines["right"].set_visible(False)
-    ax[p].set_xlim(left=pd.to_datetime("2018-01-01"),right=pd.to_datetime(END_DATE))
+    ax[p].set_xlim(left=pd.to_datetime("2020-01-01"),right=pd.to_datetime(END_DATE))
 ax[-1].set_xlabel("Date", fontweight="bold")
 fig.tight_layout()
-plt.savefig(f"plots/{PLATFORM}_term_subreddit_proportions.png", dpi=300)
+plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_proportions.png", dpi=300)
 plt.close()
 
 ## Plot User Proportions over Time
 fig, ax = plt.subplots(len(plot_vals), 1, figsize=(10,5.8))
-for p, (pname, pmatrix) in enumerate(plot_vals):
+for p, (pname, pmatrix, pdf) in enumerate(plot_vals):
     pci = bootstrap_sample(pmatrix,
                            tau,
                            func=lambda x, y: (x>0).sum(axis=0) / (y>0).sum(axis=0),
@@ -440,16 +526,16 @@ for p, (pname, pmatrix) in enumerate(plot_vals):
     ax[p].set_ylabel("Proportion\nof Users", fontweight="bold")
     ax[p].spines["top"].set_visible(False)
     ax[p].spines["right"].set_visible(False)
-    ax[p].set_xlim(left=pd.to_datetime("2018-01-01"),right=pd.to_datetime(END_DATE))
+    ax[p].set_xlim(left=pd.to_datetime("2020-01-01"),right=pd.to_datetime(END_DATE))
 ax[-1].set_xlabel("Date", fontweight="bold")
 fig.tight_layout()
-plt.savefig(f"plots/{PLATFORM}_term_subreddit_user_proportions.png", dpi=300)
+plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions.png", dpi=300)
 plt.close()
 
 ## Plot User Proportion Entire History
 fig, ax = plt.subplots(figsize=(10,5.8))
 max_val = -1
-for p, (pname, pmatrix) in enumerate(plot_vals):
+for p, (pname, pmatrix, pdf) in enumerate(plot_vals):
     val = (pmatrix>0).any(axis=1).sum() / pmatrix.shape[0] * 100
     ax.bar(p,
            val,
@@ -467,8 +553,48 @@ ax.set_xticks(list(range(p+1)))
 ax.set_xticklabels([i[0].replace("Term","\nTerm").replace("Subreddit","\nSubreddit") for i in plot_vals])
 ax.set_ylim(bottom=0, top=max_val + 4)
 fig.tight_layout()
-plt.savefig(f"plots/{PLATFORM}_term_subreddit_user_proportions_overall.png", dpi=300)
+plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions_overall.png", dpi=300)
 plt.close()
+
+## Posts Per Day
+tau_series = pd.Series(index=list(map(lambda i: datetime(*list(i)), date_range_simple)), data=tau.sum(axis=0))
+pd.DataFrame(tau_series, columns=["num_posts"]).to_csv(f"{PLOT_DIR}posts_per_day.csv")
+
+## Plot Each Term Over Time
+for p, (pname, _, pdf) in enumerate(plot_vals):
+    ## Dump DataFrame
+    pname_clean = pname.replace(" ","_")
+    pdf.to_csv(f"{PLOT_DIR}matches_per_day_{pname_clean}.csv")
+    ## Create Term/Subreddit Plots
+    for term in pdf.columns:
+        term_series = pdf[term]
+        if term_series.max() <= 5 or (term_series > 0).sum() < 10:
+            continue
+        term_series_normed = term_series.rolling(14).mean()
+        term_series_normed_std = term_series.rolling(14).std()
+        fig, ax = plt.subplots(figsize=(10,5.8))
+        ax.fill_between(term_series_normed.index,
+                        term_series_normed-term_series_normed_std,
+                        term_series_normed+term_series_normed_std,
+                        alpha=0.3)
+        ax.plot(term_series_normed.index,
+                term_series_normed.values,
+                marker="o",
+                linestyle="--",
+                linewidth=0.5,
+                color="C0",
+                ms=1,
+                alpha=0.5)
+        ax.set_xlabel("Date", fontweight="bold")
+        ax.set_ylabel("Posts Per Day (14-day Average)", fontweight="bold")
+        ax.set_title(f"{pname}: {term}", fontweight="bold", loc="left")
+        ax.set_ylim(bottom=0)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        term_clean = term.replace("/","-").replace(".","-")
+        fig.tight_layout()
+        fig.savefig(f"{PLOT_DIR}timeseries/{pname_clean}_{term_clean}.png", dpi=300)
+        plt.close(fig)
 
 ###################
 ### Term/Subreddit Visualization
@@ -507,5 +633,5 @@ for group, group_breakdown, group_map in term_plot_vals:
     fig.suptitle(group, y=.98, fontweight="bold")
     fig.tight_layout()
     fig.subplots_adjust(top=.94)
-    fig.savefig("plots/top_{}_{}.png".format(group.lower().replace(" ","_"), PLATFORM), dpi=300)
+    fig.savefig("{}top_{}_{}.png".format(PLOT_DIR, group.lower().replace(" ","_"), PLATFORM), dpi=300)
     plt.close()
