@@ -84,6 +84,9 @@ mp.close()
 ## Remove Temp Directory
 if REMOVE_TEMP:
     LOGGER.info("Removing Temporary Directory")
-    _ = os.system("rm -rf {DATA_DIR}temp/")
+    folders = glob(f"{DATA_DIR}temp/*")
+    for f in tqdm(folders, file=sys.stdout):
+        _ = os.system("rm -rf {}".format(f))
+    _ = os.system(f"rm -rf {DATA_DIR}temp/")
 
 LOGGER.info("Script complete!")
