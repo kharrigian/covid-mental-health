@@ -9,6 +9,9 @@ COUNTS_DIR = "./data/processed/twitter/counts/"
 ## Recaculate Counts (if they already exist)
 RERUN_COUNTS = False
 
+## Choose Plot Directory
+PLOT_DIR = "./plots/twitter/2018-2020/"
+
 ##################
 ### Imports
 ##################
@@ -29,6 +32,14 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.sparse import hstack, vstack, csr_matrix
+
+##################
+### Globals
+##################
+
+## Initialize Plot Directory
+if not os.path.exists(PLOT_DIR):
+    os.makedirs(PLOT_DIR)
 
 ##################
 ### Helpers
@@ -120,7 +131,7 @@ ax.set_yscale("log")
 ax.set_xlabel("# Tweets",fontweight="bold")
 ax.set_ylabel("# Users",fontweight="bold")
 fig.tight_layout()
-plt.savefig("./plots/twitter_post_distribution.png")
+plt.savefig(f"{PLOT_DIR}twitter_post_distribution.png")
 plt.close(fig)
 
 ## Compute Post Distribution (Posts Per Day)
@@ -141,7 +152,7 @@ ax.set_ylabel("# Posts (10k)", fontweight="bold")
 ax.legend(loc="upper right",frameon=True)
 fig.autofmt_xdate()
 fig.tight_layout()
-plt.savefig("./plots/twitter_post_distribution_time.png")
+plt.savefig(f"{PLOT_DIR}twitter_post_distribution_time.png")
 plt.close(fig)
 
 ##################
