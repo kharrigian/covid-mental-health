@@ -72,6 +72,10 @@ def parse_arguments():
                         type=float,
                         default=100,
                         help="(0,100] value for sampling files from each set")
+    parser.add_argument("--max_sample_size",
+                        type=int,
+                        default=None,
+                        help="If included, represents the max number of files considered in a sample.")
     parser.add_argument("--min_date_test",
                         type=str,
                         default="2020-01-01",
@@ -654,9 +658,13 @@ def main():
     test_files_in = sorted(test_labels_in.keys())
     test_files_ood = get_file_list(args)
     ## Sample Files
-    train_files = np.random.choice(train_files, int(len(train_files) * args.sample_percent / 100), replace=False)
-    test_files_in = np.random.choice(test_files_in, int(len(test_files_in) * args.sample_percent / 100), replace=False)
-    test_files_ood = np.random.choice(test_files_ood, int(len(test_files_ood) * args.sample_percent / 100), replace=False)
+    if args.max_sample_size is None:
+        max_sample_size = 100000
+    else:
+        max_sample_size = args.max_sample_size
+    train_files = np.random.choice(train_files, min(max_sample_size, int(len(train_files) * args.sample_percent / 100)), replace=False)
+    test_files_in = np.random.choice(test_files_in, min(max_sample_size, int(len(test_files_in) * args.sample_percent / 100)), replace=False)
+    test_files_ood = np.random.choice(test_files_ood, min(int(len(test_files_ood) * args.sample_percent / 100), max_sample_size), replace=False)
     ## Vectorize Training Data
     LOGGER.info(f"Vectorizing Training Data ({len(train_files)} files)")
     train_files, X_train, nnmask_train = vectorize_files(model,
