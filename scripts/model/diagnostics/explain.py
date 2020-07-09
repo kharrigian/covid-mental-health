@@ -123,12 +123,15 @@ def bootstrap_sample(X,
 
     """
     sample_size = int(sample_percent / 100 * X.shape[0])
+    if Y is not None:
+        sample_size_Y = int(sample_percent / 100 * Y.shape[0])
     estimates = []
     for sample in range(samples):
         sample_ind = np.random.choice(X.shape[0], size=sample_size, replace=True)
         X_sample = X[sample_ind]
         if Y is not None:
-            Y_sample = Y[sample_ind]
+            samply_ind_y = np.random.choice(Y.shape[0], size=sample_size_Y, replace=True)
+            Y_sample = Y[samply_ind_y]
             sample_est = func(X_sample, Y_sample)
         else:
             sample_est = func(X_sample, axis=axis)
@@ -790,9 +793,11 @@ def main():
     X_test_in = model.preprocessor.transform(X_test_in)
     X_test_ood = model.preprocessor.transform(X_test_ood)
     ## Feature Names
+    LOGGER.info("Getting Feature Names")
     feature_names = model.get_feature_names()
     feature_names = list(map(lambda f: f if not isinstance(f, tuple) else "_".join(f), feature_names))
     ## Plot Feature Sets
+    LOGGER.info("Creating Feature Matrix Comparison Visuals")
     fig, ax = plot_matrices(x=[X_train, X_test_in, X_test_ood],
                             names=["Training", "Test (Within)", "Test (OOD)"],
                             sample_size=100,
@@ -822,12 +827,14 @@ def main():
         plt.close(fig)
         plt.close(fig2)
     ## Predicted Probability Distributions
+    LOGGER.info("Plotting Probability Distributions")
     fig, ax = plot_probability_distributions(model,
                                              [X_train, X_test_in, X_test_ood],
                                              ["Training","Test (Within)", "Test (OOD)"])
     fig.savefig(f"{args.output_folder}predicted_probability_distributions.png", dpi=300)
     plt.close(fig)
     ## Shap Explainer
+    LOGGER.info("Computing Shap Values")
     explainer = shap.LinearExplainer(model.model,
                                      X_train)
     ## Compute Shap Values
@@ -835,6 +842,7 @@ def main():
     shap_test_in = explainer.shap_values(X_test_in)
     shap_test_ood = explainer.shap_values(X_test_ood)
     ## Shap Summary Plots
+    LOGGER.info("Plotting Shap Values")
     for x, sv, lbl in zip([X_train, X_test_in, X_test_ood],
                           [shap_train, shap_test_in, shap_test_ood],
                           ["train","test_in","test_ood"]):
@@ -842,6 +850,7 @@ def main():
         shap_fig.savefig(f"{args.output_folder}shap_summary_{lbl}.png", dpi=300)
         plt.close(shap_fig)
     ## Shap Value Comparison Over Features and Dataset Shift
+    LOGGER.info("Starting Dataset Comparsion by Shap and H-Distance (optionally)")
     for (s1, x1, y1), (s2, x2, y2), sname, slbl in zip([(shap_train, X_train, y_train), (shap_train, X_train, y_train), (shap_test_in, X_test_in, y_test_in)],
                                          [(shap_test_in, X_test_in, y_test_in), (shap_test_ood, X_test_ood, None), (shap_test_ood,X_test_ood, None)],
                                          ["train-test_in","train-test_ood","test_in-test_ood"],
