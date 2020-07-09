@@ -5,9 +5,10 @@ DATA_DIR = "./data/processed/reddit/histories/"
 
 ## Plot Directory
 PLOT_DIR = "./plots/reddit/keywords_subreddits/"
+# PLOT_DIR = "./plots/twitter/keywords/"
 
 ## Random Sampling
-SAMPLE_RATE = 0.1
+SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
