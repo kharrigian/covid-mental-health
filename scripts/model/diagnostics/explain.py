@@ -23,6 +23,7 @@ from sklearn import metrics
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
+from scipy.stats import pearsonr, spearmanr
 
 ## Local
 from mhlib.util.logging import initialize_logger
@@ -601,6 +602,7 @@ def plot_matrix_distributions(x=[],
     """
 
     """
+    ## Plot 1: Histogram
     fig, ax = plt.subplots(2, 1, figsize=(10,5))
     for i, (_x, _n) in enumerate(zip(x, names)):
         ## Calculate Statistics
@@ -626,15 +628,70 @@ def plot_matrix_distributions(x=[],
                    label=_n,
                    marker="o",
                    alpha=0.5)
-    ## Format
     for i in range(2):
         ax[i].set_ylabel("Proportion", fontweight="bold")
         ax[i].legend(loc="upper right", frameon=True)
     ax[0].set_xlabel(f"Column {stat_name} Value Distribution", fontweight="bold")
     ax[1].set_xlabel(f"Row {stat_name} Value Distribution", fontweight="bold")
     fig.tight_layout()
-    return fig, ax
-
+    ## Plot 2: Pair Plot of Means
+    ci = {}
+    ci_pearson = {}
+    ci_spearman = {}
+    for _x, _n in zip(x, names):
+        ci[_n] = bootstrap_sample(_x,
+                                  func=np.mean,
+                                  axis=0,
+                                  sample_percent=70,
+                                  samples=100)
+        for __x, __n in zip(x, names):
+            if _n == __n:
+                continue
+            ci_pearson[(_n, __n)] = bootstrap_sample(X=_x,
+                                                     Y=__x,
+                                                     func=lambda x, y: np.array([pearsonr(x.mean(axis=0), y.mean(axis=0))[0]]),
+                                                     sample_percent=70,
+                                                     samples=100)
+            ci_spearman[(_n, __n)] = bootstrap_sample(X=_x,
+                                                      Y=__x,
+                                                      func=lambda x, y: np.array([spearmanr(x.mean(axis=0), y.mean(axis=0))[0]]),
+                                                      sample_percent=70,
+                                                      samples=100)
+    fig2, axes = plt.subplots(len(x), len(x), figsize=(10,8))
+    for i, i_n in enumerate(names):
+        i_x_ci = ci[i_n]
+        for j, j_n in enumerate(names):
+            ## Case 1: Histogram
+            if i == j:
+                axes[i,j].hist(i_x_ci[1],
+                               bins=min(100, int(len(i_x_ci[1]) / 10)),
+                               color="C0",
+                               alpha=0.5)
+            ## Case 2: Correlation
+            else:
+                j_x_ci = ci[j_n]
+                j_var = np.vstack([(j_x_ci[1]-j_x_ci[0]), (j_x_ci[2]-j_x_ci[1])])
+                i_var = np.vstack([(i_x_ci[1]-i_x_ci[0]), (i_x_ci[2]-i_x_ci[1])])
+                axes[i,j].errorbar(j_x_ci[1],
+                                   i_x_ci[1],
+                                   xerr=j_var,
+                                   yerr=i_var,
+                                   fmt="o",
+                                   color="C0",
+                                   alpha=0.4)
+                p_corr = ci_pearson[(j_n,i_n)].T[0]
+                s_corr = ci_spearman[(j_n,i_n)].T[0]
+                axes[i,j].set_title("Pearson: {:.2f} ({:.2f},{:.2f}); Spearman: {:.2f} ({:.2f},{:.2f})".format(
+                                    p_corr[1], p_corr[0], p_corr[2], s_corr[1], s_corr[0], s_corr[2]
+                ), fontsize=6, loc="left")
+            if j == 0:
+                axes[i,j].set_ylabel(i_n, fontweight="bold")
+            if i == len(names)-1:
+                axes[i,j].set_xlabel(j_n, fontweight="bold")
+    fig2.tight_layout()
+    fig2.suptitle(stat_name, fontweight="bold", y=0.98)
+    fig2.subplots_adjust(top=.92)
+    return (fig, ax), (fig2, axes)
 
 def main():
     """
@@ -755,13 +812,15 @@ def main():
         fig.savefig(f"{args.output_folder}matrix_transformed_features_{f_type}.png")
         plt.close(fig)
         ## Plot Distribution
-        fig, ax = plot_matrix_distributions(x=[X_train[:,f_ind],X_test_in[:,f_ind],X_test_ood[:,f_ind]],
+        (fig, ax), (fig2, ax2) = plot_matrix_distributions(x=[X_train[:,f_ind],X_test_in[:,f_ind],X_test_ood[:,f_ind]],
                                             names=["Training", "Test (Within)", "Test (OOD)"],
                                             bins=50,
                                             func=np.mean,
                                             stat_name=f"Mean {f_type.title()} Feature")
         fig.savefig(f"{args.output_folder}matrix_distribution_transformed_features_{f_type}.png", dpi=300)
+        fig2.savefig(f"{args.output_folder}feature_correlation_{f_type}.png", dpi=300)
         plt.close(fig)
+        plt.close(fig2)
     ## Predicted Probability Distributions
     fig, ax = plot_probability_distributions(model,
                                              [X_train, X_test_in, X_test_ood],
