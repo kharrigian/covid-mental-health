@@ -696,6 +696,25 @@ def plot_matrix_distributions(x=[],
     fig2.subplots_adjust(top=.92)
     return (fig, ax), (fig2, axes)
 
+def plot_token_probability_correlation(model,
+                                       summary_dicts=[],
+                                       X_vals=[],
+                                       names=[]):
+    """
+
+    """
+    fig, ax = plt.subplots(len(names), 1, figsize=(10,8))
+    for i, (summary_dict, X, name) in enumerate(zip(summary_dicts, X_vals, names)):
+        preds = model.model.predict_proba(X)[:,1]
+        ax[i].scatter(summary_dict["n_tokens_per_user"], preds, color="C0", alpha=.6, label="Total")
+        ax[i].scatter(summary_dict["n_unique_tokens_per_user"], preds, color = "C1", alpha=.6, label="Unique")
+        ax[i].set_xlabel("# Tokens")
+        ax[i].set_ylabel("Predicted Probability")
+        ax[i].legend(loc = "lower right", frameon=True, fontsize=8)
+        ax[i].set_xscale("log")
+    fig.tight_layout()
+    return fig, ax
+
 def main():
     """
 
@@ -782,6 +801,7 @@ def main():
     summary_X_test_in = summarize_bow(X_test_in, model)
     summary_X_test_ood = summarize_bow(X_test_ood, model)
     ## Plot BOW Summary Stats
+    LOGGER.info("Plotting BOW Summary Stats")
     fig1, fig2 = plot_bow_summary([summary_X_train, summary_X_test_in, summary_X_test_ood],
                                   ["Training", "Test (Within)", "Test (OOD)"])
     fig1.savefig(f"{args.output_folder}bow_summary.png",dpi=300)
@@ -796,6 +816,21 @@ def main():
     LOGGER.info("Getting Feature Names")
     feature_names = model.get_feature_names()
     feature_names = list(map(lambda f: f if not isinstance(f, tuple) else "_".join(f), feature_names))
+    ## Predicted Probability Distributions
+    LOGGER.info("Plotting Probability Distributions")
+    fig, ax = plot_probability_distributions(model,
+                                             [X_train, X_test_in, X_test_ood],
+                                             ["Training","Test (Within)", "Test (OOD)"])
+    fig.savefig(f"{args.output_folder}predicted_probability_distributions.png", dpi=300)
+    plt.close(fig)
+    ## Plot Predicted Probability Correlation vs. Tokens
+    LOGGER.info("Plotting Token Count vs. Probability")
+    fig, ax = plot_token_probability_correlation(model,
+                                                 [summary_X_train, summary_X_test_in, summary_X_test_ood],
+                                                 [X_train, X_test_in, X_test_ood],
+                                                 ["Training", "Test (Within)", "Test (OOD)"])
+    fig.savefig(f"{args.output_folder}token_probability_correlation.png", dpi=300)
+    plt.close(fig)
     ## Plot Feature Sets
     LOGGER.info("Creating Feature Matrix Comparison Visuals")
     fig, ax = plot_matrices(x=[X_train, X_test_in, X_test_ood],
@@ -826,13 +861,6 @@ def main():
         fig2.savefig(f"{args.output_folder}feature_correlation_{f_type}.png", dpi=300)
         plt.close(fig)
         plt.close(fig2)
-    ## Predicted Probability Distributions
-    LOGGER.info("Plotting Probability Distributions")
-    fig, ax = plot_probability_distributions(model,
-                                             [X_train, X_test_in, X_test_ood],
-                                             ["Training","Test (Within)", "Test (OOD)"])
-    fig.savefig(f"{args.output_folder}predicted_probability_distributions.png", dpi=300)
-    plt.close(fig)
     ## Shap Explainer
     LOGGER.info("Computing Shap Values")
     explainer = shap.LinearExplainer(model.model,
