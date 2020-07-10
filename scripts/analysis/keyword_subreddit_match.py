@@ -21,7 +21,7 @@ END_DATE = "2020-05-01"
 # START_DATE = "2018-01-01"
 # END_DATE = "2020-06-20"
 
-## Date Resolution (hour, day, week, month, year)
+## Date Resolution (hour, day, month, year)
 DATE_RES = "day"
 
 ## Multiprocessing
@@ -82,9 +82,8 @@ def _format_timestamp(timestamp,
     level_func = {
             "hour": lambda x: (x.year, x.month, x.day, x.hour),
             "day":lambda x: (x.year, x.month, x.day),
-            "week":lambda x: (x.year, timestamp.isocalendar()[1]),
-            "month":lambda x: (x.year, x.month),
-            "year":lambda x: (x.year)
+            "month":lambda x: (x.year, x.month, 1),
+            "year":lambda x: (x.year, 1, 1)
     }
     if level not in level_func:
         raise ValueError("'level' must be in {}".format(list(level_func.keys())))
@@ -95,7 +94,7 @@ def format_timestamps(timestamps,
     """
     Args:
         timestamps (list):
-        level (str): One of "hour", "day", "week", "month", "year"
+        level (str): One of "hour", "day", "month", "year"
     """
     timestamps = list(map(lambda t: _format_timestamp(t, level), timestamps))
     return timestamps
