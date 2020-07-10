@@ -41,17 +41,17 @@ posts_per_week = posts_per_day.resample("W-Mon").sum()
 posts_per_month = posts_per_day.resample("MS").sum()
 
 ## Keywords/Subreddits Files
-keyword_files = [("CLSP Mental Health Terms", "matches_per_day_CLSP_Mental_Health_Terms.csv"),
-                 ("COVID-19 Terms", "matches_per_day_COVID-19_Terms.csv"),
-                 ("SMHD Mental Health Terms", "matches_per_day_SMHD_Mental_Health_Terms.csv"),
-                 ("JHU Crisis Terms", "matches_per_day_JHU_Crisis_Terms.csv")]       
-subreddit_files = [("Mental Health Subreddits", "matches_per_day_Mental_Health_Subreddits.csv"),
-                   ("COVID-19 Subreddits", "matches_per_day_COVID-19_Subreddits.csv")]
+keyword_files = [("CLSP Mental Health Terms", "matches_per_day_CLSP_Mental_Health_Terms.csv", False),
+                 ("COVID-19 Terms", "matches_per_day_COVID-19_Terms.csv", False),
+                 ("SMHD Mental Health Terms", "matches_per_day_SMHD_Mental_Health_Terms.csv", False),
+                 ("JHU Crisis Terms", "matches_per_day_JHU_Crisis_Terms.csv", False)]       
+subreddit_files = [("Mental Health Subreddits", "matches_per_day_Mental_Health_Subreddits.csv", True),
+                   ("COVID-19 Subreddits", "matches_per_day_COVID-19_Subreddits.csv", True)]
 if PLOT_SUBREDDIT:
     keyword_files.extend(subreddit_files)
 
 ## Cycle Through Keywords
-for k, kf in keyword_files:
+for k, kf, ksub in keyword_files:
     ## Load File (Daily)
     kf_df = pd.read_csv(f"{DATA_DIR}{kf}", index_col=0)
     kf_df.index = pd.to_datetime(kf_df.index)
@@ -122,7 +122,10 @@ for k, kf in keyword_files:
                              ha="right", va="center")
     ax[1][0].set_ylim(-.5, nplot*2 + .5)
     ax[1][0].axvline(0, color="black", linestyle="--", alpha=0.5)
-    ax[1][0].set_ylabel("Term", fontweight="bold")
+    if not ksub:
+        ax[1][0].set_ylabel("Term", fontweight="bold")
+    else:
+        ax[1][0].set_ylabel("Subreddit", fontweight="bold")
     fmt = ticker.ScalarFormatter()
     fmt.set_powerlimits((-2,2))
     ax[1][0].xaxis.set_major_formatter(fmt)
@@ -141,7 +144,10 @@ for k, kf in keyword_files:
                              ha="right", va="center")
     ax[1][1].set_ylim(-.5, nplot*2 + .5)
     ax[1][1].axvline(0, color="black", linestyle="--", alpha=0.5)
-    ax[1][1].set_ylabel("Term", fontweight="bold")
+    if not ksub:
+        ax[1][1].set_ylabel("Term", fontweight="bold")
+    else:
+        ax[1][1].set_ylabel("Subreddit", fontweight="bold")
     ax[1][1].set_xlabel("Percent Change\n(Pre- vs. Post COVID-19 Start)", fontweight="bold")
     fig.tight_layout()
     fig.suptitle(k, fontweight="bold", fontsize=14, y=.98)
