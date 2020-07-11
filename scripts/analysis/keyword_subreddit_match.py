@@ -1,11 +1,11 @@
 
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/histories/"
-# DATA_DIR = "./data/processed/twitter/timelines/"
+DATA_DIR = "./data/processed/reddit/2008-2020/histories/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-PLOT_DIR = "./plots/reddit/keywords_subreddits/"
-# PLOT_DIR = "./plots/twitter/keywords/"
+PLOT_DIR = "./plots/reddit/2008-2020/keywords_subreddits/"
+# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Random Sampling
 SAMPLE_RATE = 1

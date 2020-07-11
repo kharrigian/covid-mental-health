@@ -5,7 +5,7 @@ Infer location for a list of reddit users using a pretrained inference model.
 
 ## Script Configuration
 SETTINGS_FILE = "../smgeo/configurations/settings.json"
-RAW_DATA_DIR = "./data/raw/reddit/histories/"
+RAW_DATA_DIR = "./data/raw/reddit/2008-2020/histories/"
 MODEL_FILE = "../smgeo/models/reddit/Global_TextSubredditTime/model.joblib"
 SMGEO_DIR = "../smgeo/"
 NUM_JOBS = 8

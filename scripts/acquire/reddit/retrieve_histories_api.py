@@ -1,9 +1,9 @@
 
 ## Sample File
-SAMPLE_FILE = "./data/processed/reddit/author_comment_counts/user_sample.txt"
+SAMPLE_FILE = "./data/processed/reddit/2008-2020/author_comment_counts/user_sample.txt"
 
 ## Output Directory
-OUTDIR = "./data/raw/reddit/histories/"
+OUTDIR = "./data/raw/reddit/2008-2020/histories/"
 
 ## Query Timeline
 START_DATE = "2008-01-01"

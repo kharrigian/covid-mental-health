@@ -98,10 +98,10 @@ def hold_for_complete_jobs(scheduled_jobs):
 
 ## Inputs
 if PLATFORM == "reddit":
-    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/histories/"
+    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2008-2020/histories/"
     output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/"
 else:
-    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/timelines/"
+    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
     output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/"
 
 ## Base Script

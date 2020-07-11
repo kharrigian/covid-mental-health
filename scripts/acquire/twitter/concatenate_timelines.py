@@ -1,6 +1,6 @@
 
 ## Where temp directory of data files currently lives
-DATA_DIR = "./data/raw/twitter/timelines/"
+DATA_DIR = "./data/raw/twitter/2018-2020/timelines/"
 
 ## Whether or not to remove the temporary data directory
 REMOVE_TEMP = False

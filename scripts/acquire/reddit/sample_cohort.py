@@ -1,4 +1,8 @@
 
+## Input/Output Directories
+count_path = "./data/processed/reddit/2008-2020/counts/"
+cache_dir = "./data/processed/reddit/2008-2020/author_comment_counts/"
+
 ####################
 ### Imports
 ####################
@@ -70,7 +74,6 @@ def get_author_comment_counts(author_list,
 LOGGER.info("Loading Source Comment Counts")
 
 ## Identify Files
-count_path = "./data/processed/reddit/counts/"
 count_files = sorted(glob(f"{count_path}*/*.json.gz"))
 
 ## Load and Store Counts
@@ -110,7 +113,6 @@ else:
     date_range = [i.date().isoformat() for i in date_range]
 
 ## Cache Directory
-cache_dir = "./data/processed/reddit/author_comment_counts/"
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
 

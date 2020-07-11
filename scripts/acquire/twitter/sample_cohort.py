@@ -4,13 +4,13 @@
 ##################
 
 ## Count Outputs
-COUNTS_DIR = "./data/processed/twitter/counts/"
+COUNTS_DIR = "./data/processed/twitter/2018-2020/counts/"
 
 ## Recaculate Counts (if they already exist)
 RERUN_COUNTS = False
 
 ## Choose Plot Directory
-PLOT_DIR = "./plots/twitter/2019-2020/"
+PLOT_DIR = "./plots/twitter/2018-2020/"
 
 ##################
 ### Imports

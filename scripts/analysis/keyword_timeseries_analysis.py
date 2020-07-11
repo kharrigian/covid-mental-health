@@ -4,8 +4,8 @@
 #####################
 
 ## Location of Data
-DATA_DIR = "./plots/reddit/keywords_subreddits/"
-DATA_DIR = "./plots/twitter/keywords/"
+DATA_DIR = "./plots/reddit/2008-2020/keywords_subreddits/"
+DATA_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Date Boundaries
 DATA_START = "2019-01-01"

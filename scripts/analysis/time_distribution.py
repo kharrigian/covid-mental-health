@@ -6,8 +6,8 @@ DATE_RES = "month"
 PLATFORM = "twitter"
 
 ## Data Director
-DATA_DIR = "./data/processed/twitter/timelines/"
-PLOT_DIR = "./plots/twitter/timelines/"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
 
 ## Date Boundaries
 START_DATE = "2018-01-01"
