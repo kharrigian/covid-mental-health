@@ -63,7 +63,7 @@ def parse_arguments():
     parser.add_argument("model",
                         type=str,
                         help="Path to cached model directory")
-    parser.add_argument("input",
+    parser.add_argument("input_path",
                         type=str,
                         help="Path to processed test data")
     parser.add_argument("output_folder",
@@ -178,12 +178,12 @@ def get_file_list(args):
     """
 
     """
-    if os.path.isfile(args.input):
-        return [args.input]
-    elif os.path.isdir(args.input):
-        return glob(f"{args.input}*.gz")
+    if os.path.isfile(args.input_path):
+        return [args.input_path]
+    elif os.path.isdir(args.input_path):
+        return glob(f"{args.input_path}*.gz")
     else:
-        raise ValueError("Did not recognize command line --input")
+        raise ValueError("Did not recognize command line `input`")
 
 def update_filter_set(model,
                       filter_subreddits=None,
