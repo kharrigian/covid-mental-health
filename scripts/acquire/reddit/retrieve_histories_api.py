@@ -74,7 +74,7 @@ date_boundaries = [d.isoformat() for d in date_boundaries]
 
 ## Query Data
 LOGGER.info("Starting User History Query")
-for author in tqdm(cohort_sample[:20], desc="User", file=sys.stdout, position=0, leave=False):
+for author in tqdm(cohort_sample, desc="User", file=sys.stdout, position=0, leave=False):
     ## Check Existence
     author_file = f"{OUTDIR}{author}.json.gz"
     if os.path.exists(author_file):
