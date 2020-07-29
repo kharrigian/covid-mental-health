@@ -1,7 +1,7 @@
 
 ## Input/Output Directories
-count_path = "./data/processed/reddit/2008-2020/counts/"
-cache_dir = "./data/processed/reddit/2008-2020/author_comment_counts/"
+count_path = "./data/processed/reddit/2017-2020/counts/"
+cache_dir = "./data/processed/reddit/2017-2020/author_comment_counts/"
 
 ####################
 ### Imports

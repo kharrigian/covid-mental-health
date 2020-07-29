@@ -2,7 +2,7 @@
 ## Configurable Parameters
 START_DATE = "2020-05-25"
 END_DATE = "2020-06-01"
-DATA_FOLDER = "./data/processed/reddit/2008-2020/counts/"
+DATA_FOLDER = "./data/processed/reddit/2017-2020/counts/"
 
 #######################
 ### Imports
