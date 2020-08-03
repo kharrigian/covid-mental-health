@@ -87,6 +87,9 @@ for author in tqdm(cohort_sample, desc="User", file=sys.stdout, position=0, leav
                                                          start_date=dstart,
                                                          end_date=dstop,
                                                          limit=LIMIT)
+        ## Null Data
+        if range_data is None:
+            continue
         ## Length Fall Back (Anomalies)
         if len(range_data) >= LIMIT:
             range_data = REDDIT_API.retrieve_author_comments(author,
