@@ -4,13 +4,16 @@
 ####################
 
 ## Result Directory
-RESULTS_DIR = "./data/results/reddit/inference/weekly/"
+RESULTS_DIR = "./data/results/reddit/2017-2020/inference/weekly/"
+# RESULTS_DIR = "./data/results/twitter/2018-2020/inference/weekly/"
 
 ## Condition
 CONDITION = "depression"
 
 ## Parameters
 POS_THRESHOLD = 0.5
+MIN_POSTS_PER_WINDOW = 5
+MIN_TOKENS_PER_WINDOW = 25
 
 ####################
 ### Imports
@@ -28,6 +31,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn import metrics
+from statsmodels.api import tsa
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
 
@@ -76,6 +80,7 @@ pred_files = glob(f"{RESULTS_DIR}*/{CONDITION}.predictions.csv")
 predictions = {}
 support = {}
 tokens = {}
+unique_tokens = {}
 date_ranges = {}
 for pred_file in sorted(pred_files):
     start, stop = pred_file.split("/")[-2].split("_")
@@ -83,36 +88,59 @@ for pred_file in sorted(pred_files):
     pred_file_df = pd.read_csv(pred_file, index_col=0)
     predictions[start] = pred_file_df["y_pred"].to_dict()
     support[start] = pred_file_df["support"].to_dict()
-    tokens[start] = pred_file_df[["matched_tokens","unique_matched_tokens"]].apply(tuple,axis=1).to_dict()
+    tokens[start] = pred_file_df["matched_tokens"].to_dict()
+    unique_tokens[start] = pred_file_df["unique_matched_tokens"].to_dict()
 
 ## Format
 predictions = pd.DataFrame(predictions)
 support = pd.DataFrame(support)
 tokens = pd.DataFrame(tokens)
+unique_tokens = pd.DataFrame(unique_tokens)
 
-## Binarize Predictions
-predictions_binary = predictions.applymap(lambda x: x > POS_THRESHOLD if not pd.isnull(x) else np.nan)
+## Date Filtering
+dates = pd.to_datetime(predictions.columns)
+date_diffs = [(y-x).days for x, y in zip(dates[:-1],dates[1:])]
+dates_drop = [d.date().isoformat() for d, dd in zip(dates[:-1], date_diffs) if dd != np.median(date_diffs)]
+for df in [predictions, support, tokens, unique_tokens]:
+    df.drop(dates_drop, axis=1, inplace=True)
+dates = pd.to_datetime(predictions.columns)
+
+## Apply Activity Thresholds
+predictions_filtered = predictions.copy()
+support_filtered = support.copy()
+tokens_filtered = tokens.copy()
+unique_tokens_filtered = unique_tokens.copy()
+for thresh, df in zip([MIN_POSTS_PER_WINDOW, MIN_TOKENS_PER_WINDOW],
+                      [support, tokens]):
+    mask = df.copy()
+    for col in mask.columns:
+        mask.loc[mask[col] < MIN_POSTS_PER_WINDOW, col] = np.nan
+        mask.loc[mask[col] >= MIN_POSTS_PER_WINDOW, col] = 1
+    predictions_filtered = predictions_filtered * mask
+    support_filtered = support_filtered * mask
+    tokens_filtered = tokens_filtered * mask
+    unique_tokens_filtered = unique_tokens_filtered * mask
+
+## Binarize Cleaned Predictions
+predictions_binary = predictions_filtered.applymap(lambda x: x > POS_THRESHOLD if not pd.isnull(x) else np.nan)
 
 ####################
 ### Visualize Population Level
 ####################
 
-## Dates
-dates = pd.to_datetime(predictions.columns)
-
 ## Population-level Bootstrap
-pred_CI = bootstrap_sample(predictions.dropna().values,
+pred_CI = bootstrap_sample(predictions_filtered.values,
                            func=np.nanmean,
                            axis=0,
                            sample_percent=30,
-                           samples=250)
+                           samples=1000)
 pred_CI = pd.DataFrame(pred_CI.T,
                        index=dates,
                        columns=["lower","median","upper"])
-pred_CI["n"] = (~predictions.isnull()).sum(axis=0)
+pred_CI["n"] = (~predictions_filtered.isnull()).sum(axis=0)
 
 ## Population-Level Binary
-pred_CI_binary = bootstrap_sample(predictions_binary.dropna().values,
+pred_CI_binary = bootstrap_sample(predictions_binary.values,
                                   func=np.nanmean,
                                   axis=0,
                                   sample_percent=30,
@@ -124,23 +152,47 @@ pred_CI_binary["n"] = (~predictions_binary.isnull()).sum(axis=0)
 
 ## Visualize Population-Level Predictions
 for CI, CI_name, ylbl in zip([pred_CI, pred_CI_binary],
-                       ["population_level","population_level_binary"],
-                       [f"Mean Pr({CONDITION.title()})", f"Percent Pr({CONDITION.title()}) > {POS_THRESHOLD}"]):
+                             ["population_level","population_level_binary"],
+                             [f"Mean Pr({CONDITION.title()})", f"Percent Pr({CONDITION.title()}) > {POS_THRESHOLD}"]):
     fig, ax = plt.subplots(figsize=(10,5.8))
-    ax.errorbar(CI.index,
-                CI["median"],
-                yerr=np.vstack([(CI["median"]-CI["lower"]).values,
-                                (CI["upper"]-CI["median"]).values]),
-                color="C0",
-                linewidth=2,
-                label="95% Confidence Interval",
-                marker="o",
-                linestyle="--")
+    ax.axvline(pd.to_datetime("2020-03-01"),
+               linestyle="--",
+               color="black",
+               linewidth=3,
+               alpha=.9,
+               label="COVID-19 Spike in US (March 1, 2020)")
+    ax.fill_between(CI.index,
+                    CI["lower"].astype(float).values,
+                    CI["upper"].astype(float).values,
+                    color="C0",
+                    alpha=0.3)
+    ax.plot(CI.index,
+            CI["median"].astype(float),
+            marker="o",
+            markersize=5,
+            color="C0",
+            linewidth=2,
+            linestyle="-",
+            alpha=.8,
+            label="Population Average")
+    ax2 = ax.twinx()
+    ax2.plot(CI.index,
+             CI["n"].values.astype(float),
+             marker="o",
+             color="C1",
+             linewidth=2,
+             linestyle="--",
+             alpha=.5,
+             label="# Users Modeled")
+    ax2.set_ylabel("# Users Modeled",
+                   fontweight="bold")
     ax.set_xlabel("Date Start", fontweight="bold")
     ax.set_ylabel(ylbl, fontweight="bold")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.legend(loc="upper left", frameon=True)
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2, loc="upper left", frameon=True)
     fig.tight_layout()
     fig.savefig(f"{RESULTS_DIR}inferences_{CI_name}_{CONDITION}.png", dpi=300)
     plt.close()
