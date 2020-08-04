@@ -5,20 +5,23 @@
 
 ## CLSP Grid Configuration
 USERNAME = "kharrigian"
+# MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet/"
+MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/"
 
 ## Inference Configuration
 # MODEL_FILE = "20200623144030-SMHD-Depression/model.joblib"
 # START_DATE = "2017-01-01"
 # END_DATE = "2020-07-01"
-# FREQ = "QS-JAN"
-# RUN_NAME = "monthly"
+# FREQ = "W-Mon"
+# RUN_NAME = "weekly"
 # PLATFORM = "reddit"
 
-MODEL_FILE = "20200617223925-Multitask-Depression/model.joblib"
+# MODEL_FILE = "20200617223925-Multitask-Depression/model.joblib"
+MODEL_FILE = "20200803203910-Multitask-Depression/model.joblib"
 START_DATE = "2018-01-01"
 END_DATE = "2020-07-01"
-FREQ = "MS"
-RUN_NAME = "monthly"
+FREQ = "W-Mon"
+RUN_NAME = "weekly"
 PLATFORM = "twitter"
 
 ######################
@@ -98,11 +101,11 @@ def hold_for_complete_jobs(scheduled_jobs):
 
 ## Inputs
 if PLATFORM == "reddit":
-    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2008-2020/histories/"
-    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/"
+    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
+    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
 else:
     input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
-    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/"
+    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
 
 ## Base Script
 BASE_SCRIPT = """
@@ -124,7 +127,7 @@ conda activate covid-mental-health
 cd /export/fs03/a08/kharrigian/covid-mental-health/
 ## Run Script
 python ./scripts/model/infer.py \\
-       /export/fs03/a08/kharrigian/mental-health/models/falconet/{} \\
+       {}{} \\
        --input {} \\
        --output_folder {}inference/{}/{}_{}/ \\
        --min_date {} \\
@@ -153,6 +156,7 @@ for min_date, max_date in zip(DATE_RANGE[:-1], DATE_RANGE[1:]):
         min_date,
         RUN_NAME,
         min_date,
+        MODEL_DIR,
         MODEL_FILE,
         input_dir,
         output_dir,
