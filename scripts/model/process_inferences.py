@@ -4,10 +4,12 @@
 ####################
 
 ## Result Directory
-RESULTS_DIR = "./data/results/reddit/2017-2020/inference/weekly/"
-# RESULTS_DIR = "./data/results/twitter/2018-2020/inference/weekly/"
+# RESULTS_DIR = "./data/results/reddit/2017-2020/inference/weekly/"
+RESULTS_DIR = "./data/results/twitter/2018-2020/inference/weekly/"
 
-## Condition
+## Metadata
+FREQUENCY = "weekly"
+PLATFORM = "twitter"
 CONDITION = "depression"
 
 ## Parameters
@@ -31,15 +33,20 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from sklearn import metrics
+from fbprophet import Prophet
 from statsmodels.api import tsa
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
+
+## Mental Health
+from mhlib.util.logging import initialize_logger
 
 ####################
 ### Globals
 ####################
 
 _ = register_matplotlib_converters()
+LOGGER = initialize_logger()
 
 ####################
 ### Helpers
@@ -196,6 +203,91 @@ for CI, CI_name, ylbl in zip([pred_CI, pred_CI_binary],
     fig.tight_layout()
     fig.savefig(f"{RESULTS_DIR}inferences_{CI_name}_{CONDITION}.png", dpi=300)
     plt.close()
+
+####################
+### Timeseries Modeling (Prophet)
+####################
+
+## Parameters
+n_models = 20
+sample_percent = 0.7
+replace = True
+agg_func = np.nanmean
+train_boundary = "2020-01-01"
+
+## Update User
+LOGGER.info("Starting Prophet Forecast")
+
+## Bootstrap Fit Procedure
+forecasts = []
+for n in range(n_models):
+    ## Update User on Progress
+    LOGGER.info("~"*50 + f"\nStarting Forecast {n+1}/{n_models}\n" + "~"*50)
+    ## Sample Data (Bootstrap Formulation)
+    pred_sample = predictions.sample(frac=sample_percent, replace=replace).apply(agg_func, axis=0)
+    pred_sample = pred_sample.to_frame("y").reset_index().rename(columns={"index":"ds"})
+    pred_sample["ds"] = pd.to_datetime(pred_sample["ds"])
+    pred_sample_train = pred_sample.loc[pred_sample["ds"] < pd.to_datetime(train_boundary)]
+    ## Build Model
+    p = Prophet(growth="linear",
+                changepoints=None,
+                yearly_seasonality=True,
+                weekly_seasonality=False,
+                daily_seasonality=False,
+                seasonality_mode="additive",
+                mcmc_samples=100,
+                interval_width=.95)
+    p.add_seasonality(
+        name='monthly', 
+        period=30.5, 
+        fourier_order=5
+    )
+    ## Fit Model
+    p.fit(pred_sample_train)
+    ## Forecast and Cache
+    sample_forecast = p.predict(pred_sample[["ds"]])
+    sample_forecast["sample_n"] = n
+    sample_forecast = pd.merge(sample_forecast, pred_sample, on =["ds"])
+    forecasts.append(sample_forecast)
+## Concatenate Forecasts
+forecasts = pd.concat(forecasts)
+
+## Raw Values
+LOGGER.info("Computing Bootstrap Intervals (Raw Data)")
+pred_raw = bootstrap_sample(predictions.values,
+                            func=agg_func,
+                            axis=0,
+                            sample_percent=sample_percent*100,
+                            samples=1000)
+pred_raw = pd.DataFrame(pred_raw.T, columns=["lower","median","upper"])
+pred_raw.index = pd.to_datetime(predictions.columns)
+
+## Plot
+LOGGER.info("Visualizing Forecast")
+fig, ax = plt.subplots(figsize=(10,8))
+for sample in range(n_models):
+    sample_f = forecasts.loc[forecasts["sample_n"] == sample]
+    ax.fill_between(sample_f["ds"], sample_f["yhat_lower"], sample_f["yhat_upper"], color="C0", alpha=min(1 / n_models, 0.5))
+    ax.plot(sample_f["ds"], sample_f["yhat"], color="C0", alpha=0.8, linestyle=":", label="Prophet Forecast" if sample == 0 else "")
+ax.fill_between(pred_raw.index, pred_raw["lower"], pred_raw["upper"], color="C1", alpha=0.4)
+ax.plot(pred_raw.index, pred_raw["median"], color="C1", linewidth=2, alpha=0.8, linestyle="-", label="Measurement")
+ax.axvline(pd.to_datetime(train_boundary), color="black", linestyle="--", alpha=1, linewidth=3, label="Training Boundary ({})".format(train_boundary))
+ax.set_ylabel("Average Pr({})".format(CONDITION.title()), fontweight="bold", fontsize=16)
+ax.set_xlabel("Date", fontweight="bold", fontsize=16)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.set_title("Predicted Level of {} on {} ({})".format(CONDITION.title(), PLATFORM.title(), FREQUENCY.title()),
+             loc="left",
+             fontweight="bold",
+             fontstyle="italic",
+             fontsize=18)
+ax.tick_params(labelsize=14)
+leg = ax.legend(loc="upper left", frameon=True, fontsize=14)
+fig.autofmt_xdate()
+ax.set_xlim(pred_raw.index.min(), pred_raw.index.max())
+fig.tight_layout()
+fig.savefig(f"{RESULTS_DIR}inferences_population_level_prophet_{CONDITION}.png", dpi=300)
+plt.close()
 
 ####################
 ### Visualize Individual Level

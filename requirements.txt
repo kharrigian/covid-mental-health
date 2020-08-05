@@ -8,3 +8,4 @@ smgeo
 carmen
 shap
 statsmodels>=0.11.1
+fbprophet>=0.6
