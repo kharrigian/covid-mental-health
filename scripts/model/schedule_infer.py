@@ -5,24 +5,30 @@
 
 ## CLSP Grid Configuration
 USERNAME = "kharrigian"
-# MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet/"
-MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/"
+MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet_v2/"
 
 ## Inference Configuration
-# MODEL_FILE = "20200623144030-SMHD-Depression/model.joblib"
-# START_DATE = "2017-01-01"
-# END_DATE = "2020-07-01"
-# FREQ = "W-Mon"
-# RUN_NAME = "weekly"
-# PLATFORM = "reddit"
-
-# MODEL_FILE = "20200617223925-Multitask-Depression/model.joblib"
-MODEL_FILE = "20200803203910-Multitask-Depression/model.joblib"
-START_DATE = "2018-01-01"
+MODEL_FILE = "20200804213710-SMHD-Depression/model.joblib"
+START_DATE = "2017-01-01"
 END_DATE = "2020-07-01"
 FREQ = "W-Mon"
+WINDOW_SIZE = 1
+STEP_SIZE = 1
 RUN_NAME = "weekly"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
+INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
+OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/v2/"
+
+# MODEL_FILE = "20200803203910-Multitask-Depression/model.joblib"
+# START_DATE = "2018-01-01"
+# END_DATE = "2020-07-01"
+# FREQ = "W-Mon"
+# WINDOW_SIZE = 1
+# STEP_SIZE = 1
+# RUN_NAME = "weekly"
+# PLATFORM = "twitter"
+# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
 
 ######################
 ### Imports
@@ -43,6 +49,14 @@ from mhlib.util.logging import initialize_logger
 
 ## Logger
 LOGGER = initialize_logger()
+
+######################
+### Parameter Checks
+######################
+
+## Alert User to Model Window
+if STEP_SIZE > WINDOW_SIZE:
+    LOGGER.warning("WARNING: Using a STEP_SIZE > WINDOW_SIZE will result in non-consecutive modeling windows")
 
 ######################
 ### Helpers
@@ -99,14 +113,6 @@ def hold_for_complete_jobs(scheduled_jobs):
 ### Execution
 ######################
 
-## Inputs
-if PLATFORM == "reddit":
-    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
-    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
-else:
-    input_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
-    output_dir = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
-
 ## Base Script
 BASE_SCRIPT = """
 #!/bin/bash
@@ -142,6 +148,13 @@ if to_datetime(END_DATE) > DATE_RANGE[-1]:
     DATE_RANGE = DATE_RANGE + [to_datetime(END_DATE)]
 DATE_RANGE = [i.date().isoformat() for i in DATE_RANGE]
 
+## Model Windows
+DATE_WINDOWS = []
+date_ind = 0
+while date_ind < len(DATE_RANGE) - 1:
+    DATE_WINDOWS.append((DATE_RANGE[date_ind], DATE_RANGE[min(date_ind+WINDOW_SIZE, len(DATE_RANGE)-1)]))
+    date_ind += STEP_SIZE
+
 ## Temporary Script Directory
 temp_dir = "./temp_scheduler/"
 if not os.path.exists(temp_dir):
@@ -149,7 +162,7 @@ if not os.path.exists(temp_dir):
 
 ## Create Scripts
 script_files = []
-for min_date, max_date in zip(DATE_RANGE[:-1], DATE_RANGE[1:]):
+for min_date, max_date in DATE_WINDOWS:
     ## Format Script
     date_script = BASE_SCRIPT.format(
         RUN_NAME,
@@ -158,8 +171,8 @@ for min_date, max_date in zip(DATE_RANGE[:-1], DATE_RANGE[1:]):
         min_date,
         MODEL_DIR,
         MODEL_FILE,
-        input_dir,
-        output_dir,
+        INPUT_DIR,
+        OUTPUT_DIR,
         RUN_NAME,
         min_date,
         max_date,
