@@ -4,7 +4,8 @@
 ####################
 
 ## Result Directory
-# RESULTS_DIR = "./data/results/reddit/2017-2020/inference/weekly/"
+# RESULTS_DIR = "./data/results/reddit/2017-2020/v1/inference/weekly/"
+# RESULTS_DIR = "./data/results/reddit/2017-2020/v2/inference/weekly/"
 RESULTS_DIR = "./data/results/twitter/2018-2020/inference/weekly/"
 
 ## Metadata
@@ -315,4 +316,4 @@ plt.close()
 #     ax[i].set_xlabel(end, fontsize=6)
 # fig.tight_layout()
 # plt.savefig("test.png", dpi=300)
-# plt.close()
+# plt.close
