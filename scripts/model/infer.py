@@ -83,6 +83,10 @@ def parse_arguments():
                         action="store_true",
                         default=False,
                         help="If included along with samples, will use randomized selection instead of recent")
+    parser.add_argument("--analyze_features",
+                        action="store_true",
+                        default=False,
+                        "If included, analyze feature effects")
     parser.add_argument("--bootstrap_samples",
                         type=int,
                         default=100,
@@ -156,6 +160,7 @@ def predict_and_interpret(filenames,
                           max_date=None,
                           n_samples=None,
                           randomized=False,
+                          interpret=False,
                           bootstrap_samples=100,
                           bootstrap_sample_percent=30,
                           ignore_missing=True):
@@ -204,18 +209,20 @@ def predict_and_interpret(filenames,
     LOGGER.info("Computing Probabilities")
     p = 1 / (1 + np.exp(-logits))
     y_pred = dict(zip(test_files, p))
-    ## Get Features
-    feature_names = model.get_feature_names()
-    ## Get Feature Range (Bootstrap used for Confidence Intervals)
-    sample_size = int(X_test.shape[0] * bootstrap_sample_percent / 100)
-    feature_range = []
-    for _ in tqdm(list(range(bootstrap_samples)), desc="Bootstrap Feature Samples", file=sys.stdout):
-        sind = np.random.choice(X_test.shape[0], size=sample_size, replace=True)
-        feature_range.append(support[sind].mean(axis=0))
-    feature_range = np.percentile(np.vstack(feature_range), [2.5, 50, 97.5], axis=0)
-    feature_range = pd.DataFrame(feature_range.T,
-                                 index=feature_names,
-                                 columns=["lower","median","upper"])
+    feature_range = None
+    if interpret:
+        ## Get Features
+        feature_names = model.get_feature_names()
+        ## Get Feature Range (Bootstrap used for Confidence Intervals)
+        sample_size = int(X_test.shape[0] * bootstrap_sample_percent / 100)
+        feature_range = []
+        for _ in tqdm(list(range(bootstrap_samples)), desc="Bootstrap Feature Samples", file=sys.stdout):
+            sind = np.random.choice(X_test.shape[0], size=sample_size, replace=True)
+            feature_range.append(support[sind].mean(axis=0))
+        feature_range = np.percentile(np.vstack(feature_range), [2.5, 50, 97.5], axis=0)
+        feature_range = pd.DataFrame(feature_range.T,
+                                    index=feature_names,
+                                    columns=["lower","median","upper"])
     return y_pred, feature_range, n, tn, tn_binary
 
 def plot_feature_range(feature_range,
@@ -296,6 +303,7 @@ def main():
                                                                     max_date=max_date,
                                                                     n_samples=args.n_samples,
                                                                     randomized=args.randomized,
+                                                                    interpret=args.analyze_features,
                                                                     bootstrap_samples=args.bootstrap_samples,
                                                                     bootstrap_sample_percent=args.bootstrap_sample_percent,
                                                                     ignore_missing=not args.keep_missing)
@@ -311,16 +319,17 @@ def main():
     LOGGER.info(f"Caching Predictions at: {pred_file}")
     y_pred.to_csv(pred_file, index=False) 
     ## Cache Feature Range
-    LOGGER.info(f"Caching Feature Reponsibilities at : {support_file}")
-    feature_range.to_csv(support_file)
+    if feature_range is not None:
+        LOGGER.info(f"Caching Feature Reponsibilities at : {support_file}")
+        feature_range.to_csv(support_file)
+        ## Plot Feature Range (Top Values)
+        LOGGER.info("Visualizing Feature Reponsibilities")
+        fig, ax = plot_feature_range(feature_range,
+                                    condition=model._target_disorder,
+                                    k_top=20)
+        fig.savefig(f"{args.output_folder}{model._target_disorder}.feature_responsibility.png", dpi=300)
+        plt.close(fig)
     LOGGER.info("Script Complete!")
-    ## Plot Feature Range (Top Values)
-    LOGGER.info("Visualizing Feature Reponsibilities")
-    fig, ax = plot_feature_range(feature_range,
-                                 condition=model._target_disorder,
-                                 k_top=20)
-    fig.savefig(f"{args.output_folder}{model._target_disorder}.feature_responsibility.png", dpi=300)
-    plt.close(fig)
 
 
 #######################
