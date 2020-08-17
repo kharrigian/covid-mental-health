@@ -1,13 +1,16 @@
 
 ## Timestamp Resolution
-DATE_RES = "month"
+DATE_RES = "day"
 
 ## Platform
-PLATFORM = "twitter"
+# PLATFORM = "twitter"
+PLATFORM = "reddit"
 
 ## Data Director
-DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
-PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+# PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
+DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+PLOT_DIR = "./plots/reddit/2017-2020/timelines/"
 
 ## Date Boundaries
 START_DATE = "2018-01-01"
