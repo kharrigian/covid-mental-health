@@ -235,6 +235,9 @@ def process_reddit_comment_file(f,
             comment_data = []
             for line in the_file:
                 comment_data.append(json.loads(line))
+    ## Check Data
+    if len(comment_data) == 0:
+        return None
     ## Transform into DataFrame
     comment_data = pd.DataFrame(comment_data).dropna(subset=["body"])
     ## Tokenize Text
