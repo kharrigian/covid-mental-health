@@ -75,7 +75,7 @@ def parse_arguments():
     parser.add_argument("--model_min_freq", type=int, default=5, help="Minimum token frequency")
     parser.add_argument("--model_context_size", type=int, default=5, help="Context window")
     parser.add_argument("--model_use_skipgram", action="store_true", default=False, help="Use skipgram instead of CBOW")
-    parser.add_argument("--model_user_softmax", action="store_true", default=False, help="Use softmax instead of negative sampling")
+    parser.add_argument("--model_use_softmax", action="store_true", default=False, help="Use softmax instead of negative sampling")
     parser.add_argument("--model_negative", type=int, default=10, help="Number of words to use for negative sampling")
     parser.add_argument("--model_learning_rate", type=float, default=0.001, help="Learning rate")
     parser.add_argument("--model_max_vocab_size", type=int, default=250000, help="Maximum vocabulary size")
@@ -295,7 +295,7 @@ def main():
                         seed=args.random_state,
                         workers=args.jobs,
                         sg=args.model_use_skipgram,
-                        hs=args.model_user_softmax,
+                        hs=args.model_use_softmax,
                         negative=args.model_negative)
     ## Build Vocabulary
     LOGGER.info("Building Vocabulary")
