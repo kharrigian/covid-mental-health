@@ -16,6 +16,7 @@ data/processed
 !data/resources/mental_health_subreddits.json
 !data/resources/mental_health_terms.json
 !data/resources/mental_health_keywords_manual_selection.csv
+data/results
 
 ## Plots
 *.png
