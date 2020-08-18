@@ -7,30 +7,30 @@
 RERUN = False
 
 ## Processed Data Directory
-# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
 
 ## Random Sampling
 SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
-# PLATFORM = "reddit"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
+# PLATFORM = "twitter"
 
 ## Language Date Boundaries
-# START_DATE = "2017-01-01"
-# END_DATE = "2020-05-01"
-START_DATE = "2018-01-01"
-END_DATE = "2020-06-20"
+START_DATE = "2017-01-01"
+END_DATE = "2020-05-01"
+# START_DATE = "2018-01-01"
+# END_DATE = "2020-06-20"
 
 ## Analysis Date Boundaries
 ANALYSIS_START = "2019-01-01"
@@ -989,21 +989,22 @@ for p, (pkey, ptype) in enumerate(term_identifiers):
         if term_series.max() <= 5 or (term_series > 0).sum() < 10:
             continue
         ## Get Rolling Window
-        term_series_normed = term_series.rolling(14).mean()
-        term_series_normed_std = term_series.rolling(14).std()
+        term_series_normed = term_series.rolling(14).median()
+        term_series_normed_lower = term_series.rolling(14).apply(lambda x: np.percentile(x, 25))
+        term_series_normed_upper = term_series.rolling(14).apply(lambda x: np.percentile(x, 75))
         ## Generate Plot
         fig, ax = plt.subplots(figsize=(10,5.8))
         ax.fill_between(term_series_normed.index,
-                        term_series_normed-term_series_normed_std,
-                        term_series_normed+term_series_normed_std,
+                        term_series_normed_lower,
+                        term_series_normed_upper,
                         alpha=0.3)
         ax.plot(term_series_normed.index,
                 term_series_normed.values,
                 marker="o",
                 linestyle="--",
-                linewidth=0.5,
+                linewidth=1,
                 color="C0",
-                ms=1,
+                ms=3,
                 alpha=0.5)
         ax.set_xlabel("Date", fontweight="bold")
         ax.set_ylabel("Posts Per Day (14-day Average)", fontweight="bold")
@@ -1013,6 +1014,7 @@ for p, (pkey, ptype) in enumerate(term_identifiers):
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
         term_clean = term.replace("/","-").replace(".","-")
+        fig.autofmt_xdate()
         fig.tight_layout()
         fig.savefig(f"{PLOT_DIR}timeseries/{pname_clean}_{term_clean}.png", dpi=300)
         plt.close(fig)
