@@ -4,7 +4,7 @@
 ###################
 
 ## Rerun (Re-run existing matches, vocabulary generation)
-RERUN = True
+RERUN = False
 
 ## Processed Data Directory
 # DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
@@ -747,7 +747,7 @@ with open(COVID_SUBREDDIT_FILE,"r") as the_file:
 MATCH_DICT = {
     "mental_health":{
         "terms":create_regex_dict(MH_TERMS["terms"]["smhd"]),
-        "subreddits":set(MH_SUBREDDITS["all"]),
+        "subreddits":set(MH_SUBREDDITS["all"]) if PLATFORM == "reddit" else set(),
         "name":"SMHD"
     },
     "crisis":{
@@ -762,7 +762,7 @@ MATCH_DICT = {
     },
     "covid":{
         "terms":create_regex_dict(COVID_TERMS["covid"]),
-        "subreddits":set(COVID_SUBREDDITS["covid"]),
+        "subreddits":set(COVID_SUBREDDITS["covid"]) if PLATFORM == "reddit" else set(),
         "name":"COVID-19"
     }
 }
@@ -1248,7 +1248,7 @@ for tl in term_lists:
 ## Visualize Context Change
 LOGGER.info("Visualizing Context Change")
 for tl, terms in tqdm(context_analysis_terms.items(), total=len(context_analysis_terms), position=0, leave=True, file=sys.stdout):
-    for query_term in tqdm(terms, total=len(terms), position=1, leave=False, tile=sys.stdout):
+    for query_term in tqdm(terms, total=len(terms), position=1, leave=False, file=sys.stdout):
         fig = plot_context_change(query_term,
                                   term_list=tl,
                                   pmi_dict=pmi,
