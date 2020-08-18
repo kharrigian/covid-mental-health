@@ -7,30 +7,30 @@
 RERUN = True
 
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
 
 ## Random Sampling
 SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
-PLATFORM = "reddit"
-# PLATFORM = "twitter"
+# PLATFORM = "reddit"
+PLATFORM = "twitter"
 
 ## Language Date Boundaries
-START_DATE = "2017-01-01"
-END_DATE = "2020-05-01"
-# START_DATE = "2018-01-01"
-# END_DATE = "2020-06-20"
+# START_DATE = "2017-01-01"
+# END_DATE = "2020-05-01"
+START_DATE = "2018-01-01"
+END_DATE = "2020-06-20"
 
 ## Analysis Date Boundaries
 ANALYSIS_START = "2019-01-01"
@@ -230,7 +230,7 @@ def match_post(post):
                     match_cache[category] = {}
                 match_cache[category]["subreddits"] = post["subreddit"].lower()
                 match_found = True
-            term_matches = pattern_match(post["text"], MATCH_DICT[category]["terms"])
+        term_matches = pattern_match(post["text"], MATCH_DICT[category]["terms"])
         if len(term_matches) > 0:
             if category not in match_cache:
                 match_cache[category] = {}
