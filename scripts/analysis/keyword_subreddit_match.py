@@ -36,6 +36,9 @@ END_DATE = "2020-05-01"
 ANALYSIS_START = "2019-01-01"
 COVID_START = "2020-03-01"
 
+## Analysis
+RUN_KEYWORD_ANALYSIS = False
+
 ## Multiprocessing
 NUM_JOBS = 8
 
@@ -346,6 +349,25 @@ def get_match_values(post_matches,
     timestamps = format_timestamps(timestamps, date_res)
     return timestamps, values
 
+def isolate_match_values(matches):
+    """
+
+    """
+    match_values = {}
+    for match_key, match_key_vals in MATCH_DICT.items():
+        match_values[match_key] = {}
+        for match_type in match_key_vals.keys():
+            if len(match_key_vals[match_type]) == 0:
+                continue
+            if match_type not in ["subreddits","terms"]:
+                continue
+            match_values[match_key][match_type] = list(map(lambda p: get_match_values(p,
+                                                                                    match_key,
+                                                                                    match_type,
+                                                                                    DATE_RES),
+                                                            matches))
+    return match_values
+
 def vectorize_timestamps(timestamps,
                          date_range_map):
     """
@@ -393,6 +415,462 @@ def terms_over_time(term_matches,
     df = pd.DataFrame(term_time_matrix.T, index=cols, columns=rows)
     return df
 
+
+def get_date_range():
+    """
+
+    """
+    date_range = sorted(set(format_timestamps(pd.date_range(START_DATE, END_DATE, freq="h"), DATE_RES)))
+    date_range_map = dict(zip(date_range, range(len(date_range))))
+    return date_range, date_range_map
+
+def get_term_vectors(match_values,
+                     date_range_map):
+    """
+
+    """
+    term_vectors = {}
+    for match_key, match_key_vals in match_values.items():
+        term_vectors[match_key] = {}
+        for match_type, match_vals in match_key_vals.items():
+            term_vectors[match_key][match_type] = vstack([vectorize_timestamps(i[0], date_range_map) for i in match_vals]).toarray()
+    return term_vectors
+
+def get_term_vectors_normed(term_vectors,
+                            tau):
+    """
+
+    """
+    term_vectors_normed = {}
+    for match_key, match_key_vals in term_vectors.items():
+        term_vectors_normed[match_key] = {}
+        for match_type, match_vals in match_key_vals.items():
+            term_vectors_normed[match_key][match_type] = np.divide(match_vals,
+                                                                tau,
+                                                                out=np.zeros_like(match_vals),
+                                                                where=tau>0)
+    return term_vectors_normed
+
+def get_term_maps():
+    """
+
+    """
+    term_maps = {}
+    for match_key, match_key_vals in MATCH_DICT.items():
+        term_maps[match_key] = {}
+        for match_type, match_vals in match_key_vals.items():
+            if match_type not in ["subreddits","terms"]:
+                continue
+            term_maps[match_key][match_type] = dict((y, x) for x, y in enumerate(sorted(match_vals)))
+    return term_maps
+
+def get_term_breakdowns(match_values,
+                        term_maps):
+    """
+
+    """
+    term_breakdowns = {}
+    for match_key, match_key_vals in match_values.items():
+        term_breakdowns[match_key] = {}
+        for match_type, match_vals in match_key_vals.items():
+            if match_type == "subreddits":
+                breakdown = vstack([vectorize_timestamps(i[1], term_maps[match_key][match_type]) for i in match_vals]).toarray()
+            else:
+                breakdown = vstack([vectorize_timestamps([j[0] for j in flatten(i[1])], term_maps[match_key][match_type]) for i in match_vals]).toarray()
+            term_breakdowns[match_key][match_type] = breakdown
+    return term_breakdowns
+
+def get_term_time_df(match_values,
+                     term_maps,
+                     date_range_map):
+    """
+
+    """
+    term_time_df = {}
+    for match_key, match_key_vals in match_values.items():
+        term_time_df[match_key] = {}
+        for match_type, match_vals in match_key_vals.items():
+            term_time_df[match_key][match_type] = terms_over_time(match_vals,
+                                                    term_maps[match_key][match_type],
+                                                    date_range_map,
+                                                    match_type=="subreddits")
+    return term_time_df
+
+def get_term_identifiers():
+    """
+
+    """
+    term_identifiers = []
+    for match_key, match_vals in MATCH_DICT.items():
+        for match_type, vals in match_vals.items():
+            if len(vals) == 0 or match_type not in ["terms","subreddits"]:
+                continue
+            term_identifiers.append((match_key, match_type))
+    return term_identifiers
+
+def plot_post_proportions(term_identifiers,
+                          term_vectors_normed,
+                          date_index):
+    """
+
+    """
+    fig, ax = plt.subplots(len(term_identifiers), 1, figsize=(10,5.8))
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        pci = bootstrap_sample(term_vectors_normed[pkey][ptype],
+                            func=np.mean,
+                            sample_percent=70,
+                            samples=100)
+        ax[p].fill_between(date_index,
+                        pci[0],
+                        pci[2],
+                        color="C0",
+                        alpha=.5)
+        ax[p].plot(date_index,
+                pci[1],
+                color="C0",
+                alpha=0.8,
+                linestyle="--",
+                linewidth=2)
+        pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
+        ax[p].set_title(pname, loc="left", fontweight="bold")
+        ax[p].set_ylabel("Proportion\nof Posts", fontweight="bold")
+        ax[p].spines["top"].set_visible(False)
+        ax[p].spines["right"].set_visible(False)
+        ax[p].set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
+    ax[-1].set_xlabel("Date", fontweight="bold")
+    fig.tight_layout()
+    return fig, ax
+
+def plot_user_proportions(term_identifiers,
+                          term_vectors_normed,
+                          tau,
+                          date_index):
+    """
+
+    """
+    fig, ax = plt.subplots(len(term_identifiers), 1, figsize=(10,5.8))
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        pci = bootstrap_sample(term_vectors_normed[pkey][ptype],
+                            tau,
+                            func=lambda x, y: (x>0).sum(axis=0) / (y>0).sum(axis=0),
+                            sample_percent=70,
+                            samples=100)
+        ax[p].fill_between(date_index,
+                        pci[0],
+                        pci[2],
+                        color="C0",
+                        alpha=.5)
+        ax[p].plot(date_index,
+                pci[1],
+                color="C0",
+                alpha=0.8,
+                linestyle="--",
+                linewidth=2)
+        pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
+        ax[p].set_title(pname, loc="left", fontweight="bold")
+        ax[p].set_ylabel("Proportion\nof Users", fontweight="bold")
+        ax[p].spines["top"].set_visible(False)
+        ax[p].spines["right"].set_visible(False)
+        ax[p].set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
+    ax[-1].set_xlabel("Date", fontweight="bold")
+    fig.tight_layout()
+    return fig, ax
+
+def plot_match_proportions(term_identifiers,
+                           term_vectors_normed):
+    """
+
+    """
+    fig, ax = plt.subplots(figsize=(10,5.8))
+    max_val = -1
+    xticklabels = []
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        pmatrix = term_vectors_normed[pkey][ptype]
+        val = (pmatrix>0).any(axis=1).sum() / pmatrix.shape[0] * 100
+        ax.bar(p,
+            val,
+            color=f"C{p}",
+            alpha=0.75)
+        ax.text(p,
+                val + 2,
+                "{:.2f}%".format(val),
+                ha="center",
+                va="center")
+        xticklabels.append("{}\n{}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits"))
+        if val > max_val:
+            max_val = val
+    ax.set_ylabel("Percentage of\nUsers", fontweight="bold")
+    ax.set_xticks(list(range(p+1)))
+    ax.set_xticklabels(xticklabels)
+    ax.set_ylim(bottom=0, top=max_val + 4)
+    fig.tight_layout()
+    return fig, ax
+
+def get_posts_per_day(date_index,   
+                      tau):
+    """
+
+    """
+    posts_per_day = pd.Series(index=date_index, data=tau.sum(axis=0))
+    posts_per_day = pd.DataFrame(posts_per_day, columns=["num_posts"])
+    return posts_per_day
+
+def plot_matches_over_time(term_identifiers,
+                           term_time_df):
+    """
+
+    """
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        LOGGER.info(f"Plotting Individual Matches: {pkey} ({ptype})")
+        ## Get Clean Name
+        pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
+        pname_clean = pname.replace(" ","_").lower()
+        ## Matches Per Day
+        matches_per_day = term_time_df[pkey][ptype]
+        matches_per_day.to_csv(f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches_per_day_{pname_clean}.csv")
+        ## Create Term/Subreddit Plots
+        for term in tqdm(matches_per_day.columns, desc="Match", file=sys.stdout):
+            ## Get Data and Check For Significance
+            term_series = matches_per_day[term]
+            if term_series.max() <= 5 or (term_series > 0).sum() < 10:
+                continue
+            ## Get Rolling Window
+            term_series_normed = term_series.rolling(14).median()
+            term_series_normed_lower = term_series.rolling(14).apply(lambda x: np.percentile(x, 25))
+            term_series_normed_upper = term_series.rolling(14).apply(lambda x: np.percentile(x, 75))
+            ## Generate Plot
+            fig, ax = plt.subplots(figsize=(10,5.8))
+            ax.fill_between(term_series_normed.index,
+                            term_series_normed_lower,
+                            term_series_normed_upper,
+                            alpha=0.3)
+            ax.plot(term_series_normed.index,
+                    term_series_normed.values,
+                    marker="o",
+                    linestyle="--",
+                    linewidth=1,
+                    color="C0",
+                    ms=3,
+                    alpha=0.5)
+            ax.set_xlabel("Date", fontweight="bold")
+            ax.set_ylabel("Posts Per Day (14-day Average)", fontweight="bold")
+            ax.set_title(f"{pname}: {term}", fontweight="bold", loc="left")
+            ax.set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
+            ax.set_ylim(bottom=0)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            term_clean = term.replace("/","-").replace(".","-")
+            fig.autofmt_xdate()
+            fig.tight_layout()
+            fig.savefig(f"{PLOT_DIR}timeseries/{pname_clean}_{term_clean}.png", dpi=300)
+            plt.close(fig)
+
+def plot_top_matches(term_identifiers,
+                     term_maps,
+                     term_breakdowns):
+    """
+
+    """
+    LOGGER.info("Plotting Top Match Frequencies")
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        ## Get Clean Name
+        pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
+        pname_clean = pname.replace(" ","_").lower()
+        ## Names
+        group_map_r = dict((y,x) for x,y in term_maps[pkey][ptype].items())
+        group_index = [group_map_r[i] for i in range(len(group_map_r))]
+        ## Total (Across Users)
+        vals = pd.Series(term_breakdowns[pkey][ptype].sum(axis=0),
+                        index=group_index).sort_values().nlargest(30).iloc[::-1]
+        ## Total (Per Users)
+        vals_per_user = pd.Series((term_breakdowns[pkey][ptype]>0).sum(axis=0),
+                                index=group_index).sort_values().nlargest(30).iloc[::-1]
+        ## Plot
+        fig, ax = plt.subplots(1,2,figsize=(10,5.8))
+        vals.plot.barh(ax=ax[0],
+                    color="C0",
+                    alpha=.7)
+        vals_per_user.plot.barh(ax=ax[1],
+                                color="C0",
+                                alpha=.7)
+        ax[0].set_xlabel("Total Matches", fontweight="bold")
+        ax[1].set_xlabel("Total Users with Match", fontweight="bold")
+        fig.suptitle(pname, y=.98, fontweight="bold")
+        fig.tight_layout()
+        fig.subplots_adjust(top=.94)
+        fig.savefig("{}top_{}_{}.png".format(PLOT_DIR, pname_clean, PLATFORM), dpi=300)
+        plt.close()
+
+
+def generate_summary_plots(posts_per_day,
+                           term_time_df,
+                           term_identifiers,
+                           min_matches=150):
+    """
+
+    """
+    ## Aggregate by Week and Month
+    posts_per_day_filt = posts_per_day.loc[posts_per_day.index >= pd.to_datetime(ANALYSIS_START)]
+    posts_per_week_filt = posts_per_day_filt.resample("W-Mon").sum()
+    posts_per_month_filt = posts_per_day_filt.resample("MS").sum()
+    ## Cycle Through Keywords
+    for p, (pkey, ptype) in enumerate(term_identifiers):
+        ## Naming
+        pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
+        pname_clean = pname.replace(" ","_").lower()
+        ## Isolate Daily Frequencies, Filtered By Plot Start
+        kf_df = term_time_df[pkey][ptype].copy()
+        kf_df = kf_df.loc[kf_df.index >= pd.to_datetime(ANALYSIS_START)]
+        ## Create Aggregation by Week and Month
+        kf_df_weekly = kf_df.resample('W-Mon').sum()
+        kf_df_monthly = kf_df.resample("MS").sum()
+        ## Posts by Period
+        pre_covid_matched_posts = kf_df.loc[kf_df.index < pd.to_datetime(COVID_START)].sum(axis=0)
+        pre_covid_posts = posts_per_day_filt.loc[posts_per_day_filt.index < pd.to_datetime(COVID_START)].sum()
+        post_covid_matched_posts = kf_df.loc[kf_df.index >= pd.to_datetime(COVID_START)].sum(axis=0)
+        posts_covid_posts = posts_per_day_filt.loc[posts_per_day_filt.index >= pd.to_datetime(COVID_START)].sum()
+        ## Isolate By Threshold
+        good_cols = kf_df.sum(axis=0).loc[kf_df.sum(axis=0) > min_matches].index.tolist()
+        kf_df = kf_df[good_cols].copy()
+        ## Relative Posts by Period
+        pre_covid_prop_posts = pre_covid_matched_posts / pre_covid_posts.item()
+        post_covid_prop_posts = post_covid_matched_posts / posts_covid_posts.item()
+        period_prop_change = post_covid_prop_posts - pre_covid_prop_posts
+        period_pct_change = (period_prop_change / pre_covid_prop_posts).dropna().sort_values() * 100
+        period_prop_change = period_prop_change.loc[good_cols]
+        period_pct_change = period_pct_change.loc[good_cols]
+        period_pct_change = period_pct_change.loc[period_pct_change!=np.inf]
+        ## Create Summary Plot
+        fig, ax = plt.subplots(2, 2, figsize=(12,8), sharex=False, sharey=False)
+        ## Matches Over Time
+        ax[0][0].plot(pd.to_datetime(kf_df_weekly.index),
+                    kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"],
+                    linewidth=2,
+                    color="C0",
+                    alpha=.7,
+                    marker="o")
+        ax[0][0].axvline(pd.to_datetime(COVID_START),
+                        linestyle="--",
+                        linewidth=2,
+                        color="black",
+                        alpha=0.5,
+                        label="COVID-19 Start ({})".format(COVID_START))
+        xticks = [i for i in kf_df_monthly.index if (i.month - 1) % 4 == 0]
+        ax[0][0].set_xticks(xticks)
+        ax[0][0].set_xticklabels([i.date() for i in xticks], rotation=25, ha="right")
+        ax[0][0].legend(loc="upper left", frameon=True, framealpha=1)
+        ax[0][0].set_ylabel("Matches Per Post (Weekly)", fontweight="bold")
+        ax[0][0].set_xlabel("Week", fontweight="bold")
+        ## Overall Match Rate Per Week
+        ax[0][1].hist(kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"],
+                    bins=15,
+                    label="$\\mu={:.2f}, \\sigma={:.3f}$".format(
+                        (kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"]).mean(),
+                        (kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"]).std()
+                    ),
+                    alpha=.7)
+        ax[0][1].set_ylabel("# Weeks", fontweight="bold")
+        ax[0][1].set_xlabel("Matches Per Post (Weekly)", fontweight="bold")
+        ax[0][1].legend(loc="upper right", frameon=True, facecolor="white", framealpha=1)
+        ## Largest Proportional Differences
+        nplot = min(10, int(len(period_prop_change)/2))
+        plot_data = (period_prop_change.nlargest(nplot).append(period_prop_change.nsmallest(nplot))).sort_values()
+        values = list(plot_data.values[:nplot]) + [0] +  list(plot_data.values[nplot:])
+        ax[1][0].barh(list(range(nplot*2 + 1)),
+                    values,
+                    color = list(map(lambda i: "darkred" if i <= 0 else "navy", values)),
+                    alpha = 0.6)
+        ax[1][0].set_yticks(list(range(nplot*2 + 1)))
+        ax[1][0].set_yticklabels(list(plot_data.index[:nplot]) + ["..."] + list(plot_data.index[nplot:]),
+                                ha="right", va="center")
+        ax[1][0].set_ylim(-.5, nplot*2 + .5)
+        ax[1][0].axvline(0, color="black", linestyle="--", alpha=0.5)
+        if ptype == "terms":
+            ax[1][0].set_ylabel("Term", fontweight="bold")
+        else:
+            ax[1][0].set_ylabel("Subreddit", fontweight="bold")
+        fmt = ticker.ScalarFormatter()
+        fmt.set_powerlimits((-2,2))
+        ax[1][0].xaxis.set_major_formatter(fmt)
+        ax[1][0].set_xlabel("Absolute Change\n(Pre- vs. Post COVID-19 Start)", fontweight="bold")
+        ax[1][0].ticklabel_format(axis="x", style="sci")
+        ## Largest Percent Differences
+        nplot = min(10, int(len(period_pct_change)/2))
+        plot_data = (period_pct_change.nlargest(nplot).append(period_pct_change.nsmallest(nplot))).sort_values()
+        values = list(plot_data.values[:nplot]) + [0] +  list(plot_data.values[nplot:])
+        ax[1][1].barh(list(range(nplot*2 + 1)),
+                    values,
+                    color = list(map(lambda i: "darkred" if i <= 0 else "navy", values)),
+                    alpha = 0.6)
+        ax[1][1].set_yticks(list(range(nplot*2 + 1)))
+        ax[1][1].set_yticklabels(list(plot_data.index[:nplot]) + ["..."] + list(plot_data.index[nplot:]),
+                                ha="right", va="center")
+        ax[1][1].set_ylim(-.5, nplot*2 + .5)
+        ax[1][1].axvline(0, color="black", linestyle="--", alpha=0.5)
+        if ptype =="terms":
+            ax[1][1].set_ylabel("Term", fontweight="bold")
+        else:
+            ax[1][1].set_ylabel("Subreddit", fontweight="bold")
+        ax[1][1].set_xlabel("Percent Change\n(Pre- vs. Post COVID-19 Start)", fontweight="bold")
+        fig.tight_layout()
+        fig.suptitle(pname, fontweight="bold", fontsize=14, y=.98)
+        fig.subplots_adjust(top=.94)
+        fig.savefig("{}summary_{}.png".format(PLOT_DIR, pname_clean), dpi=300)
+        plt.close(fig)
+
+def keyword_analysis(matches,
+                     timestamps):
+    """
+
+    """
+    ## Isolate Matches by Category
+    LOGGER.info("Isolating Matches by List and Type")
+    match_values = isolate_match_values(matches)
+    LOGGER.info("Vectorizing Matches")
+    ## Identify Date Range
+    date_range, date_range_map = get_date_range()
+    date_index = list(map(lambda i: datetime(*list(i)), date_range))
+    ## Vectorize General Timestamps (Filenames x Dates)
+    tau = vstack([vectorize_timestamps(i, date_range_map) for i in timestamps]).toarray()
+    ## Vectorize Term Match Timestamps (Filenames x Dates)
+    term_vectors = get_term_vectors(match_values, date_range_map)
+    ## Compute Term Match Proportions (Filenames x Dates)
+    term_vectors_normed = get_term_vectors_normed(term_vectors, tau)
+    ## Term/Subreddit Maps (Value to Index Mapping)
+    term_maps = get_term_maps()
+    ## Vectorize Term Breakdowns (Filename x Term)
+    term_breakdowns = get_term_breakdowns(match_values, term_maps)
+    ## Vectorize Terms Over Time (Time x Term)
+    term_time_df = get_term_time_df(match_values, term_maps, date_range_map)
+    ## Begin Visualization
+    LOGGER.info("Visualizing Matches")
+    ## Count Unique Sets
+    term_identifiers = get_term_identifiers()
+    ## Plot Post Poportions over Time
+    LOGGER.info("Plotting Post Proportions Over Time")
+    fig, ax = plot_post_proportions(term_identifiers, term_vectors_normed, date_index)
+    plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_proportions.png", dpi=300)
+    plt.close()
+    ## Plot User Proportions over Time
+    LOGGER.info("Plotting User Proportions Over Time")
+    fig, ax = plot_user_proportions(term_identifiers, term_vectors_normed, tau, date_index)
+    plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions.png", dpi=300)
+    plt.close()
+    ## Plot User Proportion Entire History
+    LOGGER.info("Plotting Overall Match Proportions")
+    fig, ax = plot_match_proportions(term_identifiers, term_vectors_normed)
+    plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions_overall.png", dpi=300)
+    plt.close()
+    ## Posts Per Day (Compile and Cache)
+    posts_per_day = get_posts_per_day(date_index, tau)
+    posts_per_day.to_csv(f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_posts_per_day.csv")
+    ## Plot Each Term Over Time
+    _ = plot_matches_over_time(term_identifiers, term_time_df)
+    ## Plot Top Match Frequencies
+    _ = plot_top_matches(term_identifiers, term_maps, term_breakdowns)
+    ## Generate Summary Plots
+    _ = generate_summary_plots(posts_per_day, term_time_df, term_identifiers, min_matches=150)
+
 def learn_vocabulary(filenames,
                      date_boundaries,
                      vocab_kwargs=dict(filter_negate=True,
@@ -430,7 +908,8 @@ def learn_vocabulary(filenames,
                                 min_date=date_boundaries[0],
                                 max_date=date_boundaries[-1],
                                 randomized=True,
-                                n_samples=None if SAMPLE_RATE == 1 else SAMPLE_RATE)
+                                n_samples=None if SAMPLE_RATE == 1 else SAMPLE_RATE,
+                                jobs=NUM_JOBS)
     ## Initialize Vectorizer
     f2v = File2Vec(); f2v.vocab = vocabulary; f2v._initialize_dict_vectorizer()
     return f2v
@@ -453,7 +932,7 @@ def vectorize_files(filenames,
     for i, (i_start, i_end) in tqdm(enumerate(zip(date_boundaries[:-1],date_boundaries[1:])), desc="Vectorization", total=len(date_boundaries)-1, file=sys.stdout):
         ## Vectorize
         files_vec, vec = f2v._vectorize_files(filenames,
-                                              jobs=4,
+                                              jobs=NUM_JOBS,
                                               min_date=i_start,
                                               max_date=i_end,
                                               randomized=True,
@@ -786,388 +1265,14 @@ else:
     LOGGER.info("Loading Keyword Search Results")
     filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_file)
 
-## Isolate Matches by Category
-LOGGER.info("Isolating Matches by List and Type")
-match_values = {}
-for match_key, match_key_vals in MATCH_DICT.items():
-    match_values[match_key] = {}
-    for match_type in match_key_vals.keys():
-        if len(match_key_vals[match_type]) == 0:
-            continue
-        if match_type not in ["subreddits","terms"]:
-            continue
-        match_values[match_key][match_type] = list(map(lambda p: get_match_values(p,
-                                                                                  match_key,
-                                                                                  match_type,
-                                                                                  DATE_RES),
-                                                        matches))
-
 ###################
-### Temporal Analysis
+### Keyword Analysis
 ###################
 
-LOGGER.info("Vectorizing Matches")
-
-## Identify Date Range
-date_range = sorted(set(format_timestamps(pd.date_range(START_DATE, END_DATE, freq="h"), DATE_RES)))
-date_range_map = dict(zip(date_range, range(len(date_range))))
-
-## Vectorize General Timestamps (Filenames x Dates)
-tau = vstack([vectorize_timestamps(i, date_range_map) for i in timestamps]).toarray()
-
-## Vectorize Term Match Timestamps (Filenames x Dates)
-term_vectors = {}
-for match_key, match_key_vals in match_values.items():
-    term_vectors[match_key] = {}
-    for match_type, match_vals in match_key_vals.items():
-        term_vectors[match_key][match_type] = vstack([vectorize_timestamps(i[0], date_range_map) for i in match_vals]).toarray()
-
-## Compute Term Match Proportions (Filenames x Dates)
-term_vectors_normed = {}
-for match_key, match_key_vals in term_vectors.items():
-    term_vectors_normed[match_key] = {}
-    for match_type, match_vals in match_key_vals.items():
-        term_vectors_normed[match_key][match_type] = np.divide(match_vals,
-                                                               tau,
-                                                               out=np.zeros_like(match_vals),
-                                                               where=tau>0)
-
-## Term/Subreddit Maps (Value to Index Mapping)
-term_maps = {}
-for match_key, match_key_vals in MATCH_DICT.items():
-    term_maps[match_key] = {}
-    for match_type, match_vals in match_key_vals.items():
-        if match_type not in ["subreddits","terms"]:
-            continue
-        term_maps[match_key][match_type] = dict((y, x) for x, y in enumerate(sorted(match_vals)))
-
-## Vectorize Term Breakdowns (Filename x Term)
-term_breakdowns = {}
-for match_key, match_key_vals in match_values.items():
-    term_breakdowns[match_key] = {}
-    for match_type, match_vals in match_key_vals.items():
-        if match_type == "subreddits":
-            breakdown = vstack([vectorize_timestamps(i[1], term_maps[match_key][match_type]) for i in match_vals]).toarray()
-        else:
-            breakdown = vstack([vectorize_timestamps([j[0] for j in flatten(i[1])], term_maps[match_key][match_type]) for i in match_vals]).toarray()
-        term_breakdowns[match_key][match_type] = breakdown
-
-## Vectorize Terms Over Time (Time x Term)
-term_time_df = {}
-for match_key, match_key_vals in match_values.items():
-    term_time_df[match_key] = {}
-    for match_type, match_vals in match_key_vals.items():
-        term_time_df[match_key][match_type] = terms_over_time(match_vals,
-                                                  term_maps[match_key][match_type],
-                                                  date_range_map,
-                                                  match_type=="subreddits")
-
-###################
-### Temporal Visualization
-###################
-
-LOGGER.info("Beginning Visualization")
-
-## Date Range (As Datetimes)
-date_index = list(map(lambda i: datetime(*list(i)), date_range))
-
-## Count Unique Sets
-term_identifiers = []
-for match_key, match_vals in MATCH_DICT.items():
-    for match_type, vals in match_vals.items():
-        if len(vals) == 0 or match_type not in ["terms","subreddits"]:
-            continue
-        term_identifiers.append((match_key, match_type))
-
-## Plot Post Poportions over Time
-LOGGER.info("Plotting Post Proportions Over Time")
-fig, ax = plt.subplots(len(term_identifiers), 1, figsize=(10,5.8))
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    pci = bootstrap_sample(term_vectors_normed[pkey][ptype],
-                           func=np.mean,
-                           sample_percent=70,
-                           samples=100)
-    ax[p].fill_between(date_index,
-                       pci[0],
-                       pci[2],
-                       color="C0",
-                       alpha=.5)
-    ax[p].plot(date_index,
-               pci[1],
-               color="C0",
-               alpha=0.8,
-               linestyle="--",
-               linewidth=2)
-    pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
-    ax[p].set_title(pname, loc="left", fontweight="bold")
-    ax[p].set_ylabel("Proportion\nof Posts", fontweight="bold")
-    ax[p].spines["top"].set_visible(False)
-    ax[p].spines["right"].set_visible(False)
-    ax[p].set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
-ax[-1].set_xlabel("Date", fontweight="bold")
-fig.tight_layout()
-plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_proportions.png", dpi=300)
-plt.close()
-
-## Plot User Proportions over Time
-LOGGER.info("Plotting User Proportions Over Time")
-fig, ax = plt.subplots(len(term_identifiers), 1, figsize=(10,5.8))
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    pci = bootstrap_sample(term_vectors_normed[pkey][ptype],
-                           tau,
-                           func=lambda x, y: (x>0).sum(axis=0) / (y>0).sum(axis=0),
-                           sample_percent=70,
-                           samples=100)
-    ax[p].fill_between(date_index,
-                       pci[0],
-                       pci[2],
-                       color="C0",
-                       alpha=.5)
-    ax[p].plot(date_index,
-               pci[1],
-               color="C0",
-               alpha=0.8,
-               linestyle="--",
-               linewidth=2)
-    pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
-    ax[p].set_title(pname, loc="left", fontweight="bold")
-    ax[p].set_ylabel("Proportion\nof Users", fontweight="bold")
-    ax[p].spines["top"].set_visible(False)
-    ax[p].spines["right"].set_visible(False)
-    ax[p].set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
-ax[-1].set_xlabel("Date", fontweight="bold")
-fig.tight_layout()
-plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions.png", dpi=300)
-plt.close()
-
-## Plot User Proportion Entire History
-LOGGER.info("Plotting Overall Match Proportions")
-fig, ax = plt.subplots(figsize=(10,5.8))
-max_val = -1
-xticklabels = []
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    pmatrix = term_vectors_normed[pkey][ptype]
-    val = (pmatrix>0).any(axis=1).sum() / pmatrix.shape[0] * 100
-    ax.bar(p,
-           val,
-           color=f"C{p}",
-           alpha=0.75)
-    ax.text(p,
-            val + 2,
-            "{:.2f}%".format(val),
-            ha="center",
-            va="center")
-    xticklabels.append("{}\n{}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits"))
-    if val > max_val:
-        max_val = val
-ax.set_ylabel("Percentage of\nUsers", fontweight="bold")
-ax.set_xticks(list(range(p+1)))
-ax.set_xticklabels(xticklabels)
-ax.set_ylim(bottom=0, top=max_val + 4)
-fig.tight_layout()
-plt.savefig(f"{PLOT_DIR}{PLATFORM}_term_subreddit_user_proportions_overall.png", dpi=300)
-plt.close()
-
-## Posts Per Day (Compile and Cache)
-posts_per_day = pd.Series(index=date_index, data=tau.sum(axis=0))
-posts_per_day = pd.DataFrame(posts_per_day, columns=["num_posts"])
-posts_per_day.to_csv(f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_posts_per_day.csv")
-
-## Plot Each Term Over Time
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    LOGGER.info(f"Plotting Individual Matches: {pkey} ({ptype})")
-    ## Get Clean Name
-    pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
-    pname_clean = pname.replace(" ","_").lower()
-    ## Matches Per Day
-    matches_per_day = term_time_df[pkey][ptype]
-    matches_per_day.to_csv(f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches_per_day_{pname_clean}.csv")
-    ## Create Term/Subreddit Plots
-    for term in tqdm(matches_per_day.columns, desc="Match", file=sys.stdout):
-        ## Get Data and Check For Significance
-        term_series = matches_per_day[term]
-        if term_series.max() <= 5 or (term_series > 0).sum() < 10:
-            continue
-        ## Get Rolling Window
-        term_series_normed = term_series.rolling(14).median()
-        term_series_normed_lower = term_series.rolling(14).apply(lambda x: np.percentile(x, 25))
-        term_series_normed_upper = term_series.rolling(14).apply(lambda x: np.percentile(x, 75))
-        ## Generate Plot
-        fig, ax = plt.subplots(figsize=(10,5.8))
-        ax.fill_between(term_series_normed.index,
-                        term_series_normed_lower,
-                        term_series_normed_upper,
-                        alpha=0.3)
-        ax.plot(term_series_normed.index,
-                term_series_normed.values,
-                marker="o",
-                linestyle="--",
-                linewidth=1,
-                color="C0",
-                ms=3,
-                alpha=0.5)
-        ax.set_xlabel("Date", fontweight="bold")
-        ax.set_ylabel("Posts Per Day (14-day Average)", fontweight="bold")
-        ax.set_title(f"{pname}: {term}", fontweight="bold", loc="left")
-        ax.set_xlim(left=pd.to_datetime(ANALYSIS_START),right=pd.to_datetime(END_DATE))
-        ax.set_ylim(bottom=0)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        term_clean = term.replace("/","-").replace(".","-")
-        fig.autofmt_xdate()
-        fig.tight_layout()
-        fig.savefig(f"{PLOT_DIR}timeseries/{pname_clean}_{term_clean}.png", dpi=300)
-        plt.close(fig)
-
-## Plot Top Match Frequencies
-LOGGER.info("Plotting Top Match Frequencies")
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    ## Get Clean Name
-    pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
-    pname_clean = pname.replace(" ","_").lower()
-    ## Names
-    group_map_r = dict((y,x) for x,y in term_maps[pkey][ptype].items())
-    group_index = [group_map_r[i] for i in range(len(group_map_r))]
-    ## Total (Across Users)
-    vals = pd.Series(term_breakdowns[pkey][ptype].sum(axis=0),
-                     index=group_index).sort_values().nlargest(30).iloc[::-1]
-    ## Total (Per Users)
-    vals_per_user = pd.Series((term_breakdowns[pkey][ptype]>0).sum(axis=0),
-                              index=group_index).sort_values().nlargest(30).iloc[::-1]
-    ## Plot
-    fig, ax = plt.subplots(1,2,figsize=(10,5.8))
-    vals.plot.barh(ax=ax[0],
-                   color="C0",
-                   alpha=.7)
-    vals_per_user.plot.barh(ax=ax[1],
-                            color="C0",
-                            alpha=.7)
-    ax[0].set_xlabel("Total Matches", fontweight="bold")
-    ax[1].set_xlabel("Total Users with Match", fontweight="bold")
-    fig.suptitle(pname, y=.98, fontweight="bold")
-    fig.tight_layout()
-    fig.subplots_adjust(top=.94)
-    fig.savefig("{}top_{}_{}.png".format(PLOT_DIR, pname_clean, PLATFORM), dpi=300)
-    plt.close()
-
-###################
-### Summary Plots
-###################
-
-LOGGER.info("Generating Summary Plots")
-
-## Threshold
-MIN_MATCHES = 150
-
-## Aggregate by Week and Month
-posts_per_day_filt = posts_per_day.loc[posts_per_day.index >= pd.to_datetime(ANALYSIS_START)]
-posts_per_week_filt = posts_per_day_filt.resample("W-Mon").sum()
-posts_per_month_filt = posts_per_day_filt.resample("MS").sum()
-
-## Cycle Through Keywords
-for p, (pkey, ptype) in enumerate(term_identifiers):
-    ## Naming
-    pname = "{} {}".format(MATCH_DICT[pkey]["name"], "Terms" if ptype == "terms" else "Subreddits")
-    pname_clean = pname.replace(" ","_").lower()
-    ## Isolate Daily Frequencies, Filtered By Plot Start
-    kf_df = term_time_df[pkey][ptype].copy()
-    kf_df = kf_df.loc[kf_df.index >= pd.to_datetime(ANALYSIS_START)]
-    ## Create Aggregation by Week and Month
-    kf_df_weekly = kf_df.resample('W-Mon').sum()
-    kf_df_monthly = kf_df.resample("MS").sum()
-    ## Posts by Period
-    pre_covid_matched_posts = kf_df.loc[kf_df.index < pd.to_datetime(COVID_START)].sum(axis=0)
-    pre_covid_posts = posts_per_day_filt.loc[posts_per_day_filt.index < pd.to_datetime(COVID_START)].sum()
-    post_covid_matched_posts = kf_df.loc[kf_df.index >= pd.to_datetime(COVID_START)].sum(axis=0)
-    posts_covid_posts = posts_per_day_filt.loc[posts_per_day_filt.index >= pd.to_datetime(COVID_START)].sum()
-    ## Isolate By Threshold
-    good_cols = kf_df.sum(axis=0).loc[kf_df.sum(axis=0) > MIN_MATCHES].index.tolist()
-    kf_df = kf_df[good_cols].copy()
-    ## Relative Posts by Period
-    pre_covid_prop_posts = pre_covid_matched_posts / pre_covid_posts.item()
-    post_covid_prop_posts = post_covid_matched_posts / posts_covid_posts.item()
-    period_prop_change = post_covid_prop_posts - pre_covid_prop_posts
-    period_pct_change = (period_prop_change / pre_covid_prop_posts).dropna().sort_values() * 100
-    period_prop_change = period_prop_change.loc[good_cols]
-    period_pct_change = period_pct_change.loc[good_cols]
-    period_pct_change = period_pct_change.loc[period_pct_change!=np.inf]
-    ## Create Summary Plot
-    fig, ax = plt.subplots(2, 2, figsize=(12,8), sharex=False, sharey=False)
-    ## Matches Over Time
-    ax[0][0].plot(pd.to_datetime(kf_df_weekly.index),
-                  kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"],
-                  linewidth=2,
-                  color="C0",
-                  alpha=.7,
-                  marker="o")
-    ax[0][0].axvline(pd.to_datetime(COVID_START),
-                     linestyle="--",
-                     linewidth=2,
-                     color="black",
-                     alpha=0.5,
-                     label="COVID-19 Start ({})".format(COVID_START))
-    xticks = [i for i in kf_df_monthly.index if (i.month - 1) % 4 == 0]
-    ax[0][0].set_xticks(xticks)
-    ax[0][0].set_xticklabels([i.date() for i in xticks], rotation=25, ha="right")
-    ax[0][0].legend(loc="upper left", frameon=True, framealpha=1)
-    ax[0][0].set_ylabel("Matches Per Post (Weekly)", fontweight="bold")
-    ax[0][0].set_xlabel("Week", fontweight="bold")
-    ## Overall Match Rate Per Week
-    ax[0][1].hist(kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"],
-                  bins=15,
-                  label="$\\mu={:.2f}, \\sigma={:.3f}$".format(
-                      (kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"]).mean(),
-                      (kf_df_weekly.sum(axis=1) / posts_per_week_filt["num_posts"]).std()
-                  ),
-                  alpha=.7)
-    ax[0][1].set_ylabel("# Weeks", fontweight="bold")
-    ax[0][1].set_xlabel("Matches Per Post (Weekly)", fontweight="bold")
-    ax[0][1].legend(loc="upper right", frameon=True, facecolor="white", framealpha=1)
-    ## Largest Proportional Differences
-    nplot = min(10, int(len(period_prop_change)/2))
-    plot_data = (period_prop_change.nlargest(nplot).append(period_prop_change.nsmallest(nplot))).sort_values()
-    values = list(plot_data.values[:nplot]) + [0] +  list(plot_data.values[nplot:])
-    ax[1][0].barh(list(range(nplot*2 + 1)),
-                  values,
-                  color = list(map(lambda i: "darkred" if i <= 0 else "navy", values)),
-                  alpha = 0.6)
-    ax[1][0].set_yticks(list(range(nplot*2 + 1)))
-    ax[1][0].set_yticklabels(list(plot_data.index[:nplot]) + ["..."] + list(plot_data.index[nplot:]),
-                             ha="right", va="center")
-    ax[1][0].set_ylim(-.5, nplot*2 + .5)
-    ax[1][0].axvline(0, color="black", linestyle="--", alpha=0.5)
-    if ptype == "terms":
-        ax[1][0].set_ylabel("Term", fontweight="bold")
-    else:
-        ax[1][0].set_ylabel("Subreddit", fontweight="bold")
-    fmt = ticker.ScalarFormatter()
-    fmt.set_powerlimits((-2,2))
-    ax[1][0].xaxis.set_major_formatter(fmt)
-    ax[1][0].set_xlabel("Absolute Change\n(Pre- vs. Post COVID-19 Start)", fontweight="bold")
-    ax[1][0].ticklabel_format(axis="x", style="sci")
-    ## Largest Percent Differences
-    nplot = min(10, int(len(period_pct_change)/2))
-    plot_data = (period_pct_change.nlargest(nplot).append(period_pct_change.nsmallest(nplot))).sort_values()
-    values = list(plot_data.values[:nplot]) + [0] +  list(plot_data.values[nplot:])
-    ax[1][1].barh(list(range(nplot*2 + 1)),
-                  values,
-                  color = list(map(lambda i: "darkred" if i <= 0 else "navy", values)),
-                  alpha = 0.6)
-    ax[1][1].set_yticks(list(range(nplot*2 + 1)))
-    ax[1][1].set_yticklabels(list(plot_data.index[:nplot]) + ["..."] + list(plot_data.index[nplot:]),
-                             ha="right", va="center")
-    ax[1][1].set_ylim(-.5, nplot*2 + .5)
-    ax[1][1].axvline(0, color="black", linestyle="--", alpha=0.5)
-    if ptype =="terms":
-        ax[1][1].set_ylabel("Term", fontweight="bold")
-    else:
-        ax[1][1].set_ylabel("Subreddit", fontweight="bold")
-    ax[1][1].set_xlabel("Percent Change\n(Pre- vs. Post COVID-19 Start)", fontweight="bold")
-    fig.tight_layout()
-    fig.suptitle(pname, fontweight="bold", fontsize=14, y=.98)
-    fig.subplots_adjust(top=.94)
-    fig.savefig("{}summary_{}.png".format(PLOT_DIR, pname_clean), dpi=300)
-    plt.close(fig)
+## Run Keyword Analysis
+if RUN_KEYWORD_ANALYSIS:
+    LOGGER.info("Beginning Keyword Analysis")
+    _ = keyword_analysis(matches, timestamps)
 
 ###################
 ### Contextual Analysis
@@ -1180,6 +1285,9 @@ DATE_BOUNDARIES = [START_DATE, COVID_START, END_DATE]
 CONTEXT_WINDOW = None
 PMI_ALPHA = 0.001
 PMI_MIN_SUPPORT = 30
+
+## Get Date Range
+date_range, date_range_map = get_date_range()
 
 ## Learn General Vocabulary Over Time (Date x Vocabulary Size)
 vocab_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_vocabulary.joblib"
