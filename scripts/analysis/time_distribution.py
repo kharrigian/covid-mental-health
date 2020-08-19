@@ -3,18 +3,18 @@
 DATE_RES = "day"
 
 ## Platform
-# PLATFORM = "twitter"
-PLATFORM = "reddit"
+PLATFORM = "twitter"
+# PLATFORM = "reddit"
 
 ## Data Director
-# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
-# PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
-DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-PLOT_DIR = "./plots/reddit/2017-2020/timelines/"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
+# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+# PLOT_DIR = "./plots/reddit/2017-2020/timelines/"
 
 ## Date Boundaries
-START_DATE = "2018-01-01"
-END_DATE = "2020-06-01"
+START_DATE = "2019-01-01"
+END_DATE = "2020-06-15"
 
 ## Parameters
 IGNORE_RETWEETS = True
