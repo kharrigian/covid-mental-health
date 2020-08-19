@@ -4,26 +4,26 @@
 #####################
 
 ## Location of Data
-# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-# CACHE_DIR = "./data/processed/reddit/2017-2020/language_dynamics/"
-# PLOT_DIR = "./plots/reddit/2017-2020/language_dynamics/"
+DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+CACHE_DIR = "./data/processed/reddit/2017-2020/language_dynamics/"
+PLOT_DIR = "./plots/reddit/2017-2020/language_dynamics/"
 
-DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
-CACHE_DIR = "./data/processed/twitter/2018-2020/language_dynamics/"
-PLOT_DIR = "./plots/twitter/2018-2020/language_dynamics/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+# CACHE_DIR = "./data/processed/twitter/2018-2020/language_dynamics/"
+# PLOT_DIR = "./plots/twitter/2018-2020/language_dynamics/"
 
 ## Analysis Parameters
 NGRAMS = (1, 1)
 RERUN_VOCAB = False
 RERUN_COUNT = False
-# REFERENCE_MODELS = {
-#             "depression":"../mental-health/models/falconet_v2/20200804213710-SMHD-Depression/model.joblib",
-#             "anxiety":"../mental-health/models/falconet_v2/20200804214729-SMHD-Anxiety/model.joblib"
-# }
 REFERENCE_MODELS = {
-            "depression":"../mental-health/models/falconet_v2/20200803203910-Multitask-Depression/model.joblib",
-            "anxiety":"../mental-health/models/falconet_v2/20200804212701-Multitask-Anxiety/model.joblib"
+            "depression":"../mental-health/models/falconet_v2/20200804213710-SMHD-Depression/model.joblib",
+            "anxiety":"../mental-health/models/falconet_v2/20200804214729-SMHD-Anxiety/model.joblib"
 }
+# REFERENCE_MODELS = {
+#             "depression":"../mental-health/models/falconet_v2/20200803203910-Multitask-Depression/model.joblib",
+#             "anxiety":"../mental-health/models/falconet_v2/20200804212701-Multitask-Anxiety/model.joblib"
+# }
 
 ## Date Boundaries
 DATE_START = "2019-01-01"
@@ -142,38 +142,40 @@ def get_quadrant(x, y):
 processed_files = sorted(glob(f"{DATA_DIR}*.json.gz"))
 
 ## Learn/Load Vocabulary
-vocab_cache_file = "{}vocab_ngram{}-{}.joblib".format(CACHE_DIR, NGRAMS[0], NGRAMS[1])
+vocab_cache_file = "{}vocab_ngram{}-{}_{}_{}.joblib".format(CACHE_DIR, NGRAMS[0], NGRAMS[1], DATE_START, DATE_END)
 
 if not os.path.exists(vocab_cache_file) or RERUN_VOCAB:
     LOGGER.info("Learning Vocabulary")
     ## Learn Vocabulary
     vocab = Vocabulary(filter_negate=True,
-                    filter_upper=True,
-                    filter_numeric=True,
-                    filter_punctuation=True,
-                    filter_user_mentions=True,
-                    filter_url=True,
-                    filter_retweet=True,
-                    filter_stopwords=False,
-                    keep_pronouns=True,
-                    preserve_case=False,
-                    filter_hashtag=False,
-                    strip_hashtag=False,
-                    max_vocab_size=250000,
-                    min_token_freq=10,
-                    max_token_freq=None,
-                    ngrams=NGRAMS,
-                    binarize_counter=True,
-                    filter_mh_subreddits=None,
-                    filter_mh_terms=None,
-                    keep_retweets=False,
-                    external_vocab=[],
-                    external_only=False)
+                       filter_upper=True,
+                       filter_numeric=True,
+                       filter_punctuation=True,
+                       filter_user_mentions=True,
+                       filter_url=True,
+                       filter_retweet=True,
+                       filter_stopwords=False,
+                       keep_pronouns=True,
+                       preserve_case=False,
+                       filter_hashtag=False,
+                       strip_hashtag=False,
+                       max_vocab_size=250000,
+                       min_token_freq=10,
+                       max_token_freq=None,
+                       ngrams=NGRAMS,
+                       binarize_counter=True,
+                       filter_mh_subreddits=None,
+                       filter_mh_terms=None,
+                       keep_retweets=False,
+                       external_vocab=[],
+                       external_only=False)
     vocab = vocab.fit(processed_files,
-                    chunksize=30,
-                    jobs=8,
-                    min_date=DATE_START,
-                    max_date=DATE_END)
+                      chunksize=CHUNKSIZE,
+                      jobs=8,
+                      min_date=DATE_START,
+                      max_date=DATE_END,
+                      prune=True,
+                      prune_freq=50)
     ## Cache
     _ = joblib.dump(vocab, vocab_cache_file)
 else:
