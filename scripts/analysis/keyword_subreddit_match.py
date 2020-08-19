@@ -35,7 +35,7 @@ ANALYSIS_START = "2019-01-01"
 COVID_START = "2020-02-01"
 
 ## Analysis
-RUN_KEYWORD_ANALYSIS = False
+RUN_KEYWORD_ANALYSIS = True
 
 ## Multiprocessing
 NUM_JOBS = 8
@@ -888,17 +888,27 @@ def learn_vocabulary(filenames,
                                        max_token_freq=None,
                                        ngrams=(1,1),
                                        keep_retweets=False,
+                                       binarize_counter=False,
                                        random_state=SAMPLE_SEED),
-                    ):
+                    **prune_kwargs):
     """
     Learn Vocabulary ~ Time
 
     Args:
-        filenames (list of str)
-        vocab_kwargs (dict)
-        date_range_map (dict)
-
+        filenames (list of str): Processed data files
+        date_boundaries (list of str): Date boundaries used for analysis
+        vocab_kwargs (dict): Arguments passed to vocabulary initialization
+        **prune_kwargs (various): Arguments for online vocab pruning. If none
+                specified, falls back to function defaults. Call ?? to see default
+                prune_args
     """
+    ## Default Pruning Args
+    prune_args = {"prune":True,
+                  "prune_freq":50,
+                  "prune_min_count":None,
+                  "prune_max_count":None,
+                  "prune_trim_rule":None}
+    prune_args.update(prune_kwargs)
     ## Learn Vocabulary
     vocabulary = Vocabulary(**vocab_kwargs)
     vocabulary = vocabulary.fit(filenames,
@@ -907,7 +917,8 @@ def learn_vocabulary(filenames,
                                 max_date=date_boundaries[-1],
                                 randomized=True,
                                 n_samples=None if SAMPLE_RATE == 1 else SAMPLE_RATE,
-                                jobs=NUM_JOBS)
+                                jobs=NUM_JOBS,
+                                **prune_args)
     ## Initialize Vectorizer
     f2v = File2Vec(); f2v.vocab = vocabulary; f2v._initialize_dict_vectorizer()
     return f2v
@@ -1244,12 +1255,13 @@ MATCH_DICT = {
     }
 }
 
+## Find Procesed Files
+filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
+
 ## Find or Load Matches
 match_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches.joblib"
 if not os.path.exists(match_cache_file) or RERUN:
     LOGGER.info("Starting Keyword Search")
-    ## Find Procesed Files
-    filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
     ## Search For Keyword/Subreddit Matches
     filenames, matches, n, n_seen, timestamps = search_files(filenames,
                                                              date_res=DATE_RES)
@@ -1261,6 +1273,7 @@ if not os.path.exists(match_cache_file) or RERUN:
                      "timestamps":timestamps}, match_cache_file)
 else:
     LOGGER.info("Loading Keyword Search Results")
+    ## Load Existing Matches and Relevant Filenames
     filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_file)
 
 ###################
@@ -1292,7 +1305,13 @@ vocab_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_vocabulary.jo
 if not os.path.exists(vocab_cache_file) or RERUN:
     LOGGER.info("Learning Vocabulary")
     f2v = learn_vocabulary(filenames,
-                           date_boundaries=DATE_BOUNDARIES)
+                           date_boundaries=DATE_BOUNDARIES,
+                           prune=True,
+                           prune_freq=25, ## Chunksize of 50 -> Prune Every 25 * 50 = 1250 files
+                           prune_min_count=None, ## Rely on Vocabulary Params if None
+                           prune_max_count=None, ## Rely on Vocabulary Params if None
+                           prune_trim_rule=None ## Designate Special Trum Rule if Desired (Word, Count, Min Count, Max Count)
+                           )
     _ = joblib.dump(f2v, vocab_cache_file)
 else:
     LOGGER.info("Loading Existing Vocabulary")
