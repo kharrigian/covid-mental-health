@@ -10,27 +10,30 @@ MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet_v2/"
 ## Inference Configuration
 # MODEL_FILE = "20200804213710-SMHD-Depression/model.joblib"
 # MODEL_FILE = "20200804214729-SMHD-Anxiety/model.joblib"
-# START_DATE = "2017-01-01"
-# END_DATE = "2020-07-01"
+# START_DATE = "2019-01-01"
+# END_DATE = "2020-06-15"
 # FREQ = "W-Mon"
-# WINDOW_SIZE = 1
+# WINDOW_SIZE = 4
 # STEP_SIZE = 1
 # RUN_NAME = "weekly"
 # PLATFORM = "reddit"
 # INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
-# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/v2/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
 
-# MODEL_FILE = "20200803203910-Multitask-Depression/model.joblib"
-MODEL_FILE = "20200804212701-Multitask-Anxiety/model.joblib"
-START_DATE = "2018-01-01"
-END_DATE = "2020-07-01"
+MODEL_FILE = "20200803203910-Multitask-Depression/model.joblib"
+# MODEL_FILE = "20200804212701-Multitask-Anxiety/model.joblib"
+START_DATE = "2019-01-01"
+END_DATE = "2020-06-15"
 FREQ = "W-Mon"
-WINDOW_SIZE = 1
+WINDOW_SIZE = 4
 STEP_SIZE = 1
-RUN_NAME = "weekly"
+RUN_NAME = "monthly-weekly_step"
 PLATFORM = "twitter"
 INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
 OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
+
+## Hold For Complete
+HOLD_FOR_COMPLETE = False
 
 ######################
 ### Imports
@@ -40,6 +43,7 @@ OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitt
 import os
 import subprocess
 from time import sleep
+from uuid import uuid4
 
 ## External Library
 from pandas import date_range, to_datetime
@@ -158,7 +162,8 @@ while date_ind < len(DATE_RANGE) - 1:
     date_ind += STEP_SIZE
 
 ## Temporary Script Directory
-temp_dir = "./temp_scheduler/"
+rand_id = str(uuid4())
+temp_dir = f"./temp_scheduler_{rand_id}/"
 if not os.path.exists(temp_dir):
     os.makedirs(temp_dir)
 
@@ -197,9 +202,10 @@ for sf in script_files:
     jobs.append(job_id)
 
 ## Hold Till Completion
-_ = hold_for_complete_jobs(jobs)
+if HOLD_FOR_COMPLETE:
+    ## Sleep and Wait
+    _ = hold_for_complete_jobs(jobs)
+    ## Remove Temp Directory
+    _ = os.system(f"rm -rf {temp_dir}")
 
-## Remove Temp Directory
-_ = os.system(f"rm -rf {temp_dir}")
-
-LOGGER.info("All inferences complete!")
+LOGGER.info("Script complete! Remember to remove temporary directory if not done already.")
