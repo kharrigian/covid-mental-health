@@ -86,7 +86,7 @@ def parse_arguments():
     parser.add_argument("--analyze_features",
                         action="store_true",
                         default=False,
-                        "If included, analyze feature effects")
+                        help="If included, analyze feature effects")
     parser.add_argument("--bootstrap_samples",
                         type=int,
                         default=100,
