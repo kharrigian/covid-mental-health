@@ -7,30 +7,30 @@
 RERUN = False
 
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
 
 ## Random Sampling
 SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
-PLATFORM = "reddit"
-# PLATFORM = "twitter"
+# PLATFORM = "reddit"
+PLATFORM = "twitter"
 
 ## Language Date Boundaries
-START_DATE = "2017-01-01"
-END_DATE = "2020-05-01"
-# START_DATE = "2018-01-01"
-# END_DATE = "2020-06-20"
+# START_DATE = "2017-01-01"
+# END_DATE = "2020-05-01"
+START_DATE = "2018-01-01"
+END_DATE = "2020-06-20"
 
 ## Analysis Date Boundaries
 ANALYSIS_START = "2019-01-01"
@@ -1104,7 +1104,6 @@ def compute_pmi_matrix(X,
     context_date_mask = [i for i, d in enumerate(context_dict["dates"]) if d == date_bin]
     ngrams_filt = context_dict.get("ngrams")[context_date_mask]
     terms_filt = context_dict.get("terms")[context_date_mask]
-
     ## Initialize Matrix
     pmi = np.zeros((terms_filt.shape[1], X_filt_sum.shape[0]))
     ngram_counts = np.zeros((terms_filt.shape[1], X_filt_sum.shape[0]))
@@ -1146,16 +1145,17 @@ def plot_context_change(query_term,
     pmi_post = pmi_dict.get(term_list).get(1).get("pmi")
     ngram_counts_pre = pmi_dict.get(term_list).get(0).get("ngram_counts")
     ngram_counts_post = pmi_dict.get(term_list).get(1).get("ngram_counts")
-    ## Get Relevant Data
-    q_pre = (ngram_counts_pre.loc[query_term].loc[ngram_counts_pre.loc[query_term]>=min_tok_freq]).index
-    q_pre_plot = pmi_pre.loc[query_term, q_pre].sort_values().copy()
-    q_pre_plot.index = replace_emojis(q_pre_plot.index.map(lambda i: "_".join(i)))
-    q_post = (ngram_counts_post.loc[query_term].loc[ngram_counts_post.loc[query_term]>=min_tok_freq]).index
-    q_post_plot = pmi_post.loc[query_term, q_post].sort_values().copy()
-    q_post_plot.index = replace_emojis(q_post_plot.index.map(lambda i: "_".join(i)))
-    q_compare = pd.concat([q_pre_plot.to_frame("pre"), q_post_plot.to_frame("post")], axis=1).dropna()
-    q_compare["delta"] = q_compare["post"] - q_compare["pre"]
-    q_compare = q_compare.sort_values("delta")
+    ## Combine Data
+    df = pd.concat([pmi_pre.loc[query_term].to_frame(0),
+                    pmi_post.loc[query_term].to_frame(1)],
+                    axis=1)
+    df["freq_0"] = ngram_counts_pre.loc[query_term]
+    df["freq_1"] = ngram_counts_post.loc[query_term]
+    df.loc[df["freq_0"]<min_tok_freq, 0] = np.nan
+    df.loc[df["freq_1"]<min_tok_freq, 1] = np.nan
+    df = df.dropna(subset=[0,1],how="all").fillna(0)
+    df["delta"] = df[1] - df[0]
+    df.index = replace_emojis(list(map(lambda x: "_".join(x), df.index)))
     ## Initialize Figure + Axes
     f = plt.figure(constrained_layout=False,figsize=(8,6))
     gs = gridspec.GridSpec(2, 2, figure=f)
@@ -1163,11 +1163,11 @@ def plot_context_change(query_term,
     top_post = f.add_subplot(gs[1,0])
     top_diff = f.add_subplot(gs[:,1])
     ## Plot Top
-    q_pre_plot.nlargest(top_k).iloc[::-1].plot.barh(ax=top_pre, alpha=0.8)
-    q_post_plot.nlargest(top_k).iloc[::-1].plot.barh(ax=top_post, alpha=0.8)
+    df[0].nlargest(top_k).iloc[::-1].plot.barh(ax=top_pre, alpha=0.5, color="navy")
+    df[1].nlargest(top_k).iloc[::-1].plot.barh(ax=top_post, alpha=0.5, color="darkred")
     ## Plot Diff
-    q_diff_plot = (q_compare["delta"].nlargest(top_k).append(q_compare["delta"].nsmallest(top_k))).drop_duplicates().sort_values()
-    q_diff_plot.plot.barh(ax=top_diff, alpha=0.8)
+    q_diff_plot = (df["delta"].nlargest(top_k).append(df["delta"].nsmallest(top_k))).drop_duplicates().sort_values().iloc[::-1]
+    q_diff_plot.plot.barh(ax=top_diff, alpha=0.5, color=q_diff_plot.map(lambda x: "navy" if x < 0 else "darkred"))
     top_diff.axvline(0, color="black", linestyle=":", alpha=0.5)
     top_diff.yaxis.tick_right()
     ## Format Plot
@@ -1177,7 +1177,7 @@ def plot_context_change(query_term,
     top_diff.set_title("Largest Changes", fontweight="bold", fontstyle="italic", loc="left", fontsize=10)
     top_diff.set_xlabel("PMI Delta", fontweight="bold")
     for ax in [top_pre, top_post, top_diff]:
-        ax.tick_params(axis="y", labelsize=9)
+        ax.tick_params(axis="y", labelsize=8)
     f.suptitle("Keyword: '{}'".format(query_term.title()), fontweight="bold", fontsize=12)
     f.tight_layout()
     f.subplots_adjust(hspace=0.2)
@@ -1350,10 +1350,14 @@ for tl in term_lists:
 
 ## Get Analyzable Terms
 context_analysis_terms = {}
-for tl in term_lists:
-    pmi_pre = pmi.get(tl).get(0).get("pmi")
-    pmi_post = pmi.get(tl).get(1).get("pmi")
-    context_analysis_terms[tl] = sorted(set(pmi_pre.index) & set(pmi_post.index))
+min_matches = int(len(filenames) * 0.01)
+for term_list in term_lists:
+    counts_pre = pmi.get(term_list).get(0).get("counts")
+    counts_post = pmi.get(term_list).get(1).get("counts")
+    good_terms = set(counts_pre.loc[counts_pre>=min_matches].index) & \
+                 set(counts_post.loc[counts_post>=min_matches].index)
+    good_terms = sorted(good_terms)
+    context_analysis_terms[term_list] = good_terms
 
 ## Visualize Context Change
 LOGGER.info("Visualizing Context Change")
