@@ -17,11 +17,11 @@ MODEL_B = {
 OUTPUT_DIR = "./data/results/twitter/2018-2020/word2vec/"
 
 ## Parameters
-K_NEIGHBORS = 1000
+K_NEIGHBORS = 300
 PRIMARY_MIN_FREQUENCY = 100
 SECONDARY_MIN_FREQUENCY = 250
 SHOW_TOP = 50 ## Number of Top Examples
-DISPLAY_TOP = 10 ## Number of Wods Per Example
+DISPLAY_TOP = 30 ## Number of Words Per Example
 K_CORRELATION_ANALYSIS = False
 
 ########################
