@@ -7,24 +7,24 @@
 RERUN = False
 
 ## Processed Data Directory
-# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
 
 ## Random Sampling
 SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
-# PLATFORM = "reddit"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
+# PLATFORM = "twitter"
 
 ## Language Date Boundaries
 START_DATE = "2019-01-01"
@@ -35,10 +35,10 @@ ANALYSIS_START = "2019-01-01"
 COVID_START = "2020-02-01"
 
 ## Analysis
-RUN_KEYWORD_ANALYSIS = True
+RUN_KEYWORD_ANALYSIS = False
 
 ## Multiprocessing
-NUM_JOBS = 8
+NUM_JOBS = 4
 
 ###################
 ### Imports
@@ -72,7 +72,7 @@ from pandas.plotting import register_matplotlib_converters
 
 ## Mental Health Library
 from mhlib.util.logging import initialize_logger
-from mhlib.util.helpers import flatten
+from mhlib.util.helpers import flatten, chunks
 from mhlib.model.vocab import Vocabulary
 from mhlib.model.file_vectorizer import File2Vec
 from mhlib.preprocess.preprocess import tokenizer
@@ -932,22 +932,24 @@ def load_vocabulary(vocab_cache_file):
 
 def vectorize_files(filenames,
                     date_boundaries,
-                    f2v):
+                    f2v,
+                    chunksize=1000):
     """
 
     """
     ## Apply Vectorization
     X = np.zeros((len(date_boundaries)-1, len(f2v.vocab.ngram_to_idx)))
     for i, (i_start, i_end) in tqdm(enumerate(zip(date_boundaries[:-1],date_boundaries[1:])), desc="Vectorization", total=len(date_boundaries)-1, file=sys.stdout):
-        ## Vectorize
-        files_vec, vec = f2v._vectorize_files(filenames,
-                                              jobs=NUM_JOBS,
-                                              min_date=i_start,
-                                              max_date=i_end,
-                                              randomized=True,
-                                              n_samples=None if SAMPLE_RATE == 1 else SAMPLE_RATE)
-        ## Cache Total Usage
-        X[i] += vec.sum(axis=0)
+        ## Vectorize In Chunks
+        for file_chunk in chunks(filenames, chunksize):
+            files_vec, vec = f2v._vectorize_files(file_chunk,
+                                                  jobs=NUM_JOBS,
+                                                  min_date=i_start,
+                                                  max_date=i_end,
+                                                  randomized=True,
+                                                  n_samples=None if SAMPLE_RATE == 1 else SAMPLE_RATE)
+            ## Cache Total Usage
+            X[i] += vec.sum(axis=0)
     return X
 
 def load_X(X_cache_file):
