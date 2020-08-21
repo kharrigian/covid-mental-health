@@ -20,6 +20,7 @@ CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
 
 ## Random Sampling
 SAMPLE_RATE = 1
+PMI_SAMPLE_RATE = 1
 SAMPLE_SEED = 42
 
 ## Platform
@@ -997,7 +998,8 @@ def construct_matched_ngram_matrix(matches,
                                    f2v,
                                    date_range_map,
                                    date_res,
-                                   ngram_window=None):
+                                   ngram_window=None,
+                                   sample_percent=1):
     """
     Isolate N-grams around keyword matches
 
@@ -1008,6 +1010,7 @@ def construct_matched_ngram_matrix(matches,
         date_range_map
         date_res
         ngram_window (int): Size to left and right of matched token
+        sample_percent (float (0,1]): Filename sampling percentage (to reduce overhead)
 
     Returns:
         M,
@@ -1023,7 +1026,10 @@ def construct_matched_ngram_matrix(matches,
     D = []
     C = []
     ## Cycle Through Matches
+    np.random.seed(SAMPLE_SEED)
     for mlist in tqdm(matches, desc="Match Set", file=sys.stdout):
+        if np.random.rand() >= sample_percent:
+            continue
         ## Isolate Relevant Matches
         term_matches = list(filter(lambda i: term_list in i["matches"] and "terms" in i["matches"][term_list], mlist))
         if len(term_matches) == 0:
@@ -1344,7 +1350,8 @@ for tl in term_lists:
                                    f2v=f2v,
                                    date_range_map=date_range_map,
                                    date_res=DATE_RES,
-                                   ngram_window=CONTEXT_WINDOW)
+                                   ngram_window=CONTEXT_WINDOW,
+                                   sample_percent=PMI_SAMPLE_RATE)
     ## Re-Assign Dates to Desired Boundaries
     context_dates = [datetime(*date_range[i]) for i in tl_contexts[1]]
     context_dates = assign_dates_to_bins(context_dates, DATE_BOUNDARIES)
@@ -1382,13 +1389,16 @@ for term_list in term_lists:
 LOGGER.info("Visualizing Context Change")
 for tl, terms in tqdm(context_analysis_terms.items(), total=len(context_analysis_terms), position=0, leave=True, file=sys.stdout):
     for query_term in tqdm(terms, total=len(terms), position=1, leave=False, file=sys.stdout):
-        fig = plot_context_change(query_term,
-                                  term_list=tl,
-                                  pmi_dict=pmi,
-                                  min_tok_freq=10,
-                                  top_k=20)
-        qtclean = query_term.replace("/","-").replace(".","-")
-        fig.savefig(f"{PLOT_DIR}context/{PLATFORM}_{tl}-{qtclean}.png", dpi=300)
-        plt.close(fig)
+        try:
+            fig = plot_context_change(query_term,
+                                    term_list=tl,
+                                    pmi_dict=pmi,
+                                    min_tok_freq=10,
+                                    top_k=20)
+            qtclean = query_term.replace("/","-").replace(".","-")
+            fig.savefig(f"{PLOT_DIR}context/{PLATFORM}_{tl}-{qtclean}.png", dpi=300)
+            plt.close(fig)
+        except:
+            continue
 
 LOGGER.info("Script complete!")
