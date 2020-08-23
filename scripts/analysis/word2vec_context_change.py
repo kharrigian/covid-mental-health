@@ -5,22 +5,26 @@
 
 ## Designate Models
 MODEL_A = {
-        "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-02_2019-06/word2vec.model",
+        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-02_2019-06/word2vec.model",
+        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2019-02_2019-06/word2vec.model",
         "name":"2019"
 }
 MODEL_B = {
-        "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-02_2020-06/word2vec.model",
+        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-02_2020-06/word2vec.model",
+        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2020-02_2020-06/word2vec.model",
         "name":"2020"
 }
 
 ## Output Directory
-OUTPUT_DIR = "./data/results/twitter/2018-2020/word2vec/"
+# OUTPUT_DIR = "./data/results/twitter/2018-2020/word2vec/"
+OUTPUT_DIR = "./data/results/reddit/2017-2020/word2vec/"
 
 ## Parameters
 K_NEIGHBORS = 300
 PRIMARY_MIN_FREQUENCY = 100
 SECONDARY_MIN_FREQUENCY = 250
 SHOW_TOP = 50 ## Number of Top Examples
+OUTPUT_TOP = 500 ## Number of Top Examples to Cache
 DISPLAY_TOP = 30 ## Number of Words Per Example
 K_CORRELATION_ANALYSIS = False
 
@@ -209,14 +213,35 @@ nearest_neighbors_filtered = nearest_neighbors.loc[(nearest_neighbors[["freq_a",
 print("########### TERMS WITH THE BIGGEST CHANGES ###########")
 
 ## Display Examples
-for t, term in enumerate(nearest_neighbors_filtered.index[:SHOW_TOP]):
+top_values = []
+for t, term in enumerate(nearest_neighbors_filtered.index[:max(OUTPUT_TOP,SHOW_TOP)]):
     ## Get Top Values
     top_a = [vocab_shared_masked[v] for v in top_k_a[vocab_shared_term2ind[term]]][:DISPLAY_TOP]
     top_b = [vocab_shared_masked[v] for v in top_k_b[vocab_shared_term2ind[term]]][:DISPLAY_TOP]
     ## Show Top Values
-    print("#"*5 + f" {t+1}) {term} " + "#"*5)
-    print("\t{}: ".format(MODEL_A.get("name")) + ", ".join(top_a)) 
-    print("\t{}: ".format(MODEL_B.get("name")) + ", ".join(top_b)+"\n") 
+    if t < SHOW_TOP:
+        print("#"*5 + f" {t+1}) {term} " + "#"*5)
+        print("\t{}: ".format(MODEL_A.get("name")) + ", ".join(top_a)) 
+        print("\t{}: ".format(MODEL_B.get("name")) + ", ".join(top_b)+"\n") 
+    ## Cache Top Values
+    if t < OUTPUT_TOP:
+        top_values.append([term,
+                           ", ".join(top_a), 
+                           ", ".join(top_b),
+                           nearest_neighbors_filtered.loc[term,"overlap"],
+                           nearest_neighbors_filtered.loc[term,"freq_a"],
+                           nearest_neighbors_filtered.loc[term,"freq_b"]])
+
+## Cache Top Values
+top_values = pd.DataFrame(top_values,
+                          columns=["term",
+                                   MODEL_A.get("name"),
+                                   MODEL_B.get("name"),
+                                   "overlap_at_{}".format(K_NEIGHBORS),
+                                   MODEL_A.get("name")+"_freq",
+                                   MODEL_B.get("name")+"_freq"])
+top_values = top_values.set_index("term")
+top_values.to_csv(f"{OUTPUT_DIR}top_changes_K-{K_NEIGHBORS}_Min1-{PRIMARY_MIN_FREQUENCY}_Min2-{SECONDARY_MIN_FREQUENCY}.csv")
 
 ########################
 ## Show Keyword Changes
