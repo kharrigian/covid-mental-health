@@ -22,7 +22,7 @@ from gensim.models.callbacks import CallbackAny2Vec
 ## Mental Health
 from mhlib.util.helpers import flatten
 from mhlib.util.logging import initialize_logger
-from mhlib.util.data_loaders import LoadProcessedData
+from mhlib.model.data_loaders import LoadProcessedData
 from mhlib.preprocess.tokenizer import Tokenizer
 
 ############################
