@@ -4,16 +4,16 @@
 ####################
 
 ## Result Directory
-# RESULTS_DIR = "./data/results/reddit/2017-2020/inference/monthly-weekly_step/"
-RESULTS_DIR = "./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
+RESULTS_DIR = "./data/results/reddit/2017-2020/inference/monthly-weekly_step/"
+# RESULTS_DIR = "./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Plot Directory
-# PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
-PLOT_DIR = "./plots/twitter/2018-2020/inference/monthly-weekly_step/"
+PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
+# PLOT_DIR = "./plots/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Metadata
 FREQUENCY = "weekly"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
 CONDITION = "anxiety"
 
 ## Parameters
@@ -21,6 +21,7 @@ POS_THRESHOLD = 0.9
 MIN_POSTS_PER_WINDOW = 10
 MIN_TOKENS_PER_WINDOW = 25
 COVID_START = "2020-02-01"
+CACHE_CONCATENATION=True
 
 ####################
 ### Imports
@@ -91,12 +92,37 @@ def bootstrap_sample(X,
     ci = np.percentile(estimates, [2.5, 50, 97.5], axis=axis)
     return ci
 
+def cache_results(predictions,
+                  support,
+                  tokens,
+                  unique_tokens,
+                  date_ranges):
+    """
+
+    """
+    ## Update Indices
+    predictions.index = predictions.index.map(os.path.basename).str.rstrip(".json.gz")
+    support.index = support.index.map(os.path.basename).str.rstrip(".json.gz")
+    tokens.index = tokens.index.map(os.path.basename).str.rstrip(".json.gz")
+    unique_tokens.index = unique_tokens.index.map(os.path.basename).str.rstrip(".json.gz")
+    ## Date Range Format
+    date_ranges = pd.DataFrame(date_ranges, index=["start","stop"]).T
+    date_ranges.index.name = "date_label"
+    ## Write Data
+    outdir = f"{RESULTS_DIR}{PLATFORM}.{CONDITION}.results/"
+    if not os.path.exists(outdir):
+        _ = os.makedirs(outdir)
+    for df, df_name in zip([predictions,support,tokens,unique_tokens,date_ranges],
+                           ["predictions","num_posts","num_tokens","num_unique_tokens","date_ranges"]):
+        df.to_csv(f"{outdir}{CONDITION}.{df_name}.csv")
+
 ####################
 ### Load Predictions
 ####################
 
 ## Identify Prediction Files
 pred_files = sorted(glob(f"{RESULTS_DIR}*/{CONDITION}.predictions.csv"))
+pred_files = list(filter(lambda f: ".results/" not in f, pred_files))
 
 ## Load Predictions
 LOGGER.info("Loading Predictions")
@@ -131,6 +157,14 @@ dates_drop = [d.date().isoformat() for d, dd in zip(dates[:-1], date_diffs) if d
 for df in [predictions, support, tokens, unique_tokens]:
     df.drop(dates_drop, axis=1, inplace=True)
 dates = pd.to_datetime(predictions.columns)
+
+## Data Caching
+if CACHE_CONCATENATION:
+    _ = cache_results(predictions,
+                      support,
+                      tokens,
+                      unique_tokens,
+                      date_ranges)
 
 ## Apply Activity Thresholds
 LOGGER.info("Applying Activity Thresholds for Filtering")
