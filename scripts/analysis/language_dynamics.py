@@ -17,12 +17,12 @@ NGRAMS = (1, 1)
 RERUN_VOCAB = False
 RERUN_COUNT = False
 REFERENCE_MODELS = {
-            "depression":"../mental-health/models/falconet_v2/20200804213710-SMHD-Depression/model.joblib",
-            "anxiety":"../mental-health/models/falconet_v2/20200804214729-SMHD-Anxiety/model.joblib"
+            "depression":"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
+            "anxiety":"../mental-health/models/falconet_v2/20200824135147-SMHD-Anxiety/model.joblib"
 }
 # REFERENCE_MODELS = {
-#             "depression":"../mental-health/models/falconet_v2/20200803203910-Multitask-Depression/model.joblib",
-#             "anxiety":"../mental-health/models/falconet_v2/20200804212701-Multitask-Anxiety/model.joblib"
+#             "depression":"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib",
+#             "anxiety":"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib"
 # }
 
 ## Date Boundaries
