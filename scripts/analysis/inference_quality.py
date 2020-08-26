@@ -4,12 +4,13 @@
 ############################
 
 ## Metadata
-PLATFORM = "twitter"
+PLATFORM = "reddit"
 CONDITION = "depression"
 
 ## Analysis Paramters
 K_EXTREME = 10
-DISPLAY_TOP = 10
+DISPLAY_TOP = 5
+RANK_BY_ABLATION = True
 
 ## Filtering Parameters
 MIN_POSTS_PER_WINDOW = 10
@@ -57,6 +58,7 @@ MODEL_PATHS = {
     ("twitter","anxiety"):"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
     ("twitter","depression"):"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib"
 }
+LOGGER.info("Loading Model")
 MODEL = joblib.load(MODEL_PATHS.get((PLATFORM,CONDITION)))
 
 ############################
@@ -79,7 +81,8 @@ def load_processed_data(file,
     X = MODEL._count2vec.transform(token_counts).toarray()[0]
     return data, X
 
-def predict_posts(posts):
+def predict_posts(posts,
+                  rank_by_ablation=False):
     """
 
     """
@@ -87,7 +90,14 @@ def predict_posts(posts):
     X = MODEL._count2vec.transform(token_counts).toarray()
     X_T = MODEL.preprocessor.transform(X)
     y = MODEL.model.predict_proba(X_T)[:,1]
-    return y
+    if not rank_by_ablation:
+        return y, None
+    X_base = X.sum(axis=0,keepdims=True)
+    X_T_base = MODEL.preprocessor.transform(X_base)
+    X_T_ablation = MODEL.preprocessor.transform(X_base - X)
+    y_base = MODEL.model.predict_proba(X_T_base)[:,1]
+    y_ablation = MODEL.model.predict_proba(X_T_ablation)[:,1]
+    return y, y_base - y_ablation
 
 def asciihist(it,
               numbins=10,
@@ -147,7 +157,8 @@ def get_extremes(predictions,
                  date,
                  date_ranges,
                  k_extreme=10,
-                 display_top=5):
+                 display_top=5,
+                 rank_by_ablation=False):
     """
 
     """
@@ -177,7 +188,8 @@ def get_extremes(predictions,
     y_pos_pred = MODEL.model.predict_proba(X_pos)[:,1]
     y_neg_pred = MODEL.model.predict_proba(X_neg)[:,1]
     pred_dict = {
-                "positive":dict(zip(pos_files, y_pos_pred)), "negative":dict(zip(neg_files, y_neg_pred))
+                "positive":dict(zip(pos_files, y_pos_pred)),
+                "negative":dict(zip(neg_files, y_neg_pred))
     }
     ## Compare Means (Validate Extremes)
     LOGGER.info("\n"+ "#"*50 + "\n### Overall Distribution\n" + "#"*50 + "\n")
@@ -186,16 +198,21 @@ def get_extremes(predictions,
     ))
     ## Make Post-Level Predictions
     extreme_post_predictions = {"positive":{},"negative":{}}
+    extreme_post_influences = {"positive":{},"negative":{}}
     for ext, ext_dict in extreme_data.items():
         for file, posts in ext_dict.items():
-            extreme_post_predictions[ext][file] = predict_posts(posts)
+            y, y_ablation = predict_posts(posts,
+                                          rank_by_ablation=rank_by_ablation)
+            extreme_post_predictions[ext][file] = y
+            extreme_post_influences[ext][file] = y_ablation
     ## Plot Post-Level Distributions
     for e, (ext, ext_dict) in enumerate(extreme_post_predictions.items()):
         y_ext = np.hstack(list(ext_dict.values()))
         LOGGER.info("\n"+ "#"*50 + "\n### Post Distribution: {} Extremes\n".format(ext.title()) + "#"*50 + "\n")
         _ = asciihist(y_ext, numbins=10)
     ## See Top Ranked Posts
-    for e, (ext, ext_dict) in enumerate(extreme_post_predictions.items()):
+    sorter = extreme_post_predictions if not rank_by_ablation else extreme_post_influences
+    for e, (ext, ext_dict) in enumerate(extreme_data.items()):
         LOGGER.info("\n"+ "#"*50 + "\n### Examples: {} Extremes\n".format(ext.title()) + "#"*50)
         for file in ext_dict.keys():
             LOGGER.info("\n~~~~~~~~~~~~ User: {} [Pr(y=1) = {:.4f}] ~~~~~~~~~~~~\n".format(os.path.basename(file).rstrip(".json.gz"),pred_dict[ext][file]))
@@ -203,7 +220,7 @@ def get_extremes(predictions,
                 file_post_text = [("r/" + i["subreddit"], i["text"]) for i in extreme_data[ext][file]]
             else:
                 file_post_text = [("tweet", i["text"]) for i in extreme_data[ext][file]]
-            file_post_preds = extreme_post_predictions[ext][file]
+            file_post_preds = sorter[ext][file]
             file_examples = sorted(zip(file_post_text, file_post_preds), key=lambda x: x[1], reverse=True)
             for f, ex in enumerate(file_examples[:display_top]):
                 pstr = "({}) [{:.5f}] -- {} -- {}".format(f+1, ex[1], ex[0][0], ex[0][1])
@@ -281,4 +298,5 @@ for ad in analysis_dates:
                      date=ad,
                      date_ranges=date_ranges,
                      k_extreme=K_EXTREME,
-                     display_top=DISPLAY_TOP)
+                     display_top=DISPLAY_TOP,
+                     rank_by_ablation=RANK_BY_ABLATION)
