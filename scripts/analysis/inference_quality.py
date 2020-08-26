@@ -16,6 +16,14 @@ RANK_BY_ABLATION = True
 MIN_POSTS_PER_WINDOW = 10
 MIN_TOKENS_PER_WINDOW = 25
 
+## Groups (Target Probabilities to Showcase)
+GROUPS = {
+    "High (Pr(y=1)~1)":1,
+    "Moderate (Pr(y=1)~0.7)":0.7,
+    "Low (Pr(y=1)~0.3)":0.3,
+    "No Evidence (Pr(y=1)~0)":0
+}
+
 ############################
 ### Imports
 ############################
@@ -156,6 +164,7 @@ def asciihist(it,
 def get_extremes(predictions,
                  date,
                  date_ranges,
+                 groups,
                  k_extreme=10,
                  display_top=5,
                  rank_by_ablation=False):
@@ -164,14 +173,15 @@ def get_extremes(predictions,
     """
     ## Alert User
     LOGGER.info("\n"+ "#"*100 + "\n### Analysis for Date Range: {} to {}\n".format(date_ranges[date][0], date_ranges[date][1]) + "#"*100 + "\n")
-    ## Identify Extremes
-    extremes = {
-        "positive":predictions[date].dropna().nlargest(k_extreme).index.tolist(),
-        "negative":predictions[date].dropna().nsmallest(k_extreme).index.tolist()
-    }
-    ## Load Extremes
-    extreme_data = {"positive":{},"negative":{}}
-    extreme_X = {"positive":{},"negative":{}}
+    ## Filter Predictions
+    predictions_nn = predictions[date].dropna().copy()
+    ## Identify Targets
+    extremes = {}
+    for gname, gtarget in groups.items():
+        extremes[gname] = (predictions_nn - gtarget).map(abs).nsmallest(k_extreme).index.tolist()
+    ## Load Targets
+    extreme_data = {gname:{} for gname in groups.keys()}
+    extreme_X ={gname:{} for gname in groups.keys()}
     for ext, ext_dict in extremes.items():
         for filename in ext_dict:
             file_data, file_X = load_processed_data(filename,
@@ -179,26 +189,21 @@ def get_extremes(predictions,
                                                     pd.to_datetime(date_ranges[date][1]))
             extreme_data[ext][filename] = file_data
             extreme_X[ext][filename] = file_X
-    ## Get Feature Representations
-    pos_files = list(extreme_X["positive"].keys())
-    neg_files = list(extreme_X["negative"].keys())
-    X_pos = MODEL.preprocessor.transform(np.vstack([extreme_X["positive"][f] for f in pos_files]))
-    X_neg = MODEL.preprocessor.transform(np.vstack([extreme_X["negative"][f] for f in neg_files]))
-    ## Make Predictions
-    y_pos_pred = MODEL.model.predict_proba(X_pos)[:,1]
-    y_neg_pred = MODEL.model.predict_proba(X_neg)[:,1]
-    pred_dict = {
-                "positive":dict(zip(pos_files, y_pos_pred)),
-                "negative":dict(zip(neg_files, y_neg_pred))
-    }
+    ## Get Feature Representations and Predictions
+    extreme_features = {}
+    extreme_preds = {}
+    pred_dict = {}
+    for group, group_files in extremes.items():
+        extreme_features[group] = MODEL.preprocessor.transform(np.vstack([extreme_X[group][f] for f in group_files]))
+        extreme_preds[group] = MODEL.model.predict_proba(extreme_features[group])[:,1]
+        pred_dict[group] = dict(zip(group_files, extreme_preds[group]))
     ## Compare Means (Validate Extremes)
     LOGGER.info("\n"+ "#"*50 + "\n### Overall Distribution\n" + "#"*50 + "\n")
-    LOGGER.info("Mean Positive: {:.3f} (sig={:.3f})\nMean Negative: {:.3f} (sig={:.3f})".format(
-                y_pos_pred.mean(), y_pos_pred.std(), y_neg_pred.mean(), y_neg_pred.std()
-    ))
+    for group, group_preds in extreme_preds.items():
+        LOGGER.info("Mean {}: {:.3f} (sig={:.3f})".format(group, group_preds.mean(), group_preds.std()))
     ## Make Post-Level Predictions
-    extreme_post_predictions = {"positive":{},"negative":{}}
-    extreme_post_influences = {"positive":{},"negative":{}}
+    extreme_post_predictions = {group:{} for group in groups}
+    extreme_post_influences = {group:{} for group in groups}
     for ext, ext_dict in extreme_data.items():
         for file, posts in ext_dict.items():
             y, y_ablation = predict_posts(posts,
@@ -206,21 +211,21 @@ def get_extremes(predictions,
             extreme_post_predictions[ext][file] = y
             extreme_post_influences[ext][file] = y_ablation
     ## Plot Post-Level Distributions
-    for e, (ext, ext_dict) in enumerate(extreme_post_predictions.items()):
-        y_ext = np.hstack(list(ext_dict.values()))
-        LOGGER.info("\n"+ "#"*50 + "\n### Post Distribution: {} Extremes\n".format(ext.title()) + "#"*50 + "\n")
+    for g, (group, group_dict) in enumerate(extreme_post_predictions.items()):
+        y_ext = np.hstack(list(group_dict.values()))
+        LOGGER.info("\n"+ "#"*50 + "\n### Post Distribution: {}\n".format(group.title()) + "#"*50 + "\n")
         _ = asciihist(y_ext, numbins=10)
     ## See Top Ranked Posts
     sorter = extreme_post_predictions if not rank_by_ablation else extreme_post_influences
-    for e, (ext, ext_dict) in enumerate(extreme_data.items()):
-        LOGGER.info("\n"+ "#"*50 + "\n### Examples: {} Extremes\n".format(ext.title()) + "#"*50)
-        for file in ext_dict.keys():
-            LOGGER.info("\n~~~~~~~~~~~~ User: {} [Pr(y=1) = {:.4f}] ~~~~~~~~~~~~\n".format(os.path.basename(file).rstrip(".json.gz"),pred_dict[ext][file]))
+    for e, (group, group_dict) in enumerate(extreme_data.items()):
+        LOGGER.info("\n"+ "#"*50 + "\n### Examples: {}\n".format(group.title()) + "#"*50)
+        for file in group_dict.keys():
+            LOGGER.info("\n~~~~~~~~~~~~ User: {} [Pr(y=1) = {:.4f}] ~~~~~~~~~~~~\n".format(os.path.basename(file).rstrip(".json.gz"),pred_dict[group][file]))
             if PLATFORM == "reddit":
-                file_post_text = [("r/" + i["subreddit"], i["text"]) for i in extreme_data[ext][file]]
+                file_post_text = [("r/" + i["subreddit"], i["text"]) for i in extreme_data[group][file]]
             else:
-                file_post_text = [("tweet", i["text"]) for i in extreme_data[ext][file]]
-            file_post_preds = sorter[ext][file]
+                file_post_text = [("tweet", i["text"]) for i in extreme_data[group][file]]
+            file_post_preds = sorter[group][file]
             file_examples = sorted(zip(file_post_text, file_post_preds), key=lambda x: x[1], reverse=True)
             for f, ex in enumerate(file_examples[:display_top]):
                 pstr = "({}) [{:.5f}] -- {} -- {}".format(f+1, ex[1], ex[0][0], ex[0][1])
@@ -297,6 +302,7 @@ for ad in analysis_dates:
     _ = get_extremes(predictions=predictions_filtered,
                      date=ad,
                      date_ranges=date_ranges,
+                     groups=GROUPS,
                      k_extreme=K_EXTREME,
                      display_top=DISPLAY_TOP,
                      rank_by_ablation=RANK_BY_ABLATION)
