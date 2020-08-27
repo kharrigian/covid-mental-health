@@ -14,7 +14,7 @@ PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
 ## Metadata
 FREQUENCY = "weekly"
 PLATFORM = "reddit"
-CONDITION = "anxiety"
+CONDITION = "depression"
 
 ## Parameters
 POS_THRESHOLD = 0.9
@@ -221,12 +221,12 @@ for CI, CI_name, ylbl in zip([pred_CI, pred_CI_binary],
                              ["population_level","population_level_binary"],
                              [f"Mean Pr({CONDITION.title()})", f"Percent Pr({CONDITION.title()}) > {POS_THRESHOLD}"]):
     fig, ax = plt.subplots(figsize=(10,5.8))
-    ax.axvline(pd.to_datetime("2020-03-01"),
+    ax.axvline(pd.to_datetime(COVID_START),
                linestyle="--",
                color="black",
                linewidth=3,
                alpha=.9,
-               label="COVID-19 Spike in US (March 1, 2020)")
+               label="COVID-19 Start ({})".format(COVID_START))
     ax.fill_between(CI.index,
                     CI["lower"].astype(float).values,
                     CI["upper"].astype(float).values,
