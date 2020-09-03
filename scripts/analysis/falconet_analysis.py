@@ -17,26 +17,26 @@ MH_FIELDS=["anxiety","depression"]
 MH_POSITIVE_THRESHOLD=0.8
 AGGS = [(
             ["date"], ## Groups
-            {}, ## Field Filter Set
-            {}, ## Timestamp Filter Set
+            {"indorg":["ind"]}, ## Field Filter Set
+            {"indorg":["ind"]}, ## Timestamp Filter Set
             False ## Group-level Normalization
         ),
         (
             ["date","gender"],
-            {"gender":["man","woman"]},
-            {"gender":["man","woman"]},
+            {"indorg":["ind"],"gender":["man","woman"]},
+            {"indorg":["ind"],"gender":["man","woman"]},
             True
         ),
         (
             ["date","is_united_states"],
-            {"is_united_states":["U.S.","Non-U.S."]},
-            {"is_united_states":["U.S.","Non-U.S."]},
+            {"indorg":["ind"],"is_united_states":["U.S.","Non-U.S."]},
+            {"indorg":["ind"],"is_united_states":["U.S.","Non-U.S."]},
             True
         ),
         (
             ["date","state"],
-            {"country":["United States"], "state":["California","New York","Florida","Maryland"]},
-            {"country":["United States"]},
+            {"indorg":["ind"],"country":["United States"], "state":["California","New York","Florida","Maryland"]},
+            {"indorg":["ind"],"country":["United States"]},
             False
 )]
 
@@ -229,7 +229,7 @@ def _count_fields(filename,
             line_key.append(_format_timestamp(line.get("date"), frequency))
         if "demographics" in keys:
             line_key.append(line.get("demographics").get("gender"))
-            line_key.append(line.get("demographics").get("inorg"))
+            line_key.append(line.get("demographics").get("indorg"))
         if "location" in keys:
             if line.get("location") is None:
                 line_key.append(None)
