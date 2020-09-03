@@ -11,16 +11,16 @@ Schedule Falconet Mental Health Pipeline
 
 ## Run Configuration
 OUTPUT_PREFIX="falconet"
-START_DATE="2020-07-01"
+START_DATE="2018-01-01"
 END_DATE="2020-08-01"
-SAMPLE_RATE=0.001
+SAMPLE_RATE=0.01
 RANDOM_STATE=42
 DRY_RUN=False
 
 ## Pipeline Configuration
 DATA_TYPE="twitter"
 INPUT_FOLDER="/export/c12/mdredze/twitter/public/"
-OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet/"
+OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet-full/"
 CONFIG="/export/fs03/a08/kharrigian/lab-resources/falconet/pipelines/mental_health/all.json"
 
 ## Processing Parameters
