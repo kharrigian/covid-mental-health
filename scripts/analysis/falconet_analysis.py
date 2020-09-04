@@ -9,12 +9,14 @@ PLOT_DIR = "./plots/twitter/2018-2020/falconet-large/"
 
 ## Analysis Flags
 KEYWORD_COUNTS = True
+KEYWORD_DYNAMICS = True
 MENTAL_HEALTH_COUNTS = True
 
 ## Analysis Parameters
 MH_BINS=40
 MH_FIELDS=["anxiety","depression"]
 MH_POSITIVE_THRESHOLD=0.8
+COVID_START="2020-03-01"
 AGGS = [(
             ["date"], ## Groups
             {"indorg":["ind"]}, ## Field Filter Set
@@ -65,6 +67,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from pandas.plotting import register_matplotlib_converters
 
 ## Local
 from mhlib.util.logging import initialize_logger
@@ -78,6 +81,9 @@ LOGGER = initialize_logger()
 
 ## Precision of Bin Rounding
 BIN_PREC = 4
+
+## Register Timestamp Converters for Plotting
+_ = register_matplotlib_converters()
 
 ##############################
 ### Helpers
@@ -302,15 +308,15 @@ def count_fields(filenames,
     return field_dfs, timestamps 
 
 def visualize_trends(field_counts,
-                             timestamp_counts,
-                             subset=None,
-                             aggs=["date"],
-                             visualize=True,
-                             field_filter_sets={},
-                             timestamp_filter_sets={},
-                             group_normalize=False,
-                             dropna=False,
-                             smoothing_window=None):
+                     timestamp_counts,
+                     subset=None,
+                     aggs=["date"],
+                     visualize=True,
+                     field_filter_sets={},
+                     timestamp_filter_sets={},
+                     group_normalize=False,
+                     dropna=False,
+                     smoothing_window=None):
     """
 
     """
@@ -357,6 +363,11 @@ def visualize_trends(field_counts,
         return field_counts_aggs, timestamp_counts_aggs
     ## Generate Plot
     fig, ax = plt.subplots(figsize=(10,5.8))
+    ax.axvline(pd.to_datetime(COVID_START),
+               linestyle="--",
+               color="black",
+               alpha=0.5,
+               label="COVID-19 Start ({})".format(COVID_START))
     if len(aggs) == 1:
         fielddata = field_counts_aggs.set_index("date")["count"]
         tdata = timestamp_counts_aggs.set_index("date")["count"]
@@ -368,8 +379,8 @@ def visualize_trends(field_counts,
         plot_props = plot_props.reindex(dates).fillna(0)
         if smoothing_window is not None:
             plot_props_avg = plot_props.rolling(smoothing_window).median()
-            plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25))
-            plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75))
+            plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25), raw=True)
+            plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75), raw=True)
         else:
             plot_props_avg = plot_props
         if smoothing_window is not None:
@@ -398,8 +409,8 @@ def visualize_trends(field_counts,
             plot_props = plot_props.reindex(dates).fillna(0)
             if smoothing_window is not None:
                 plot_props_avg = plot_props.rolling(smoothing_window).median()
-                plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25))
-                plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75))
+                plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25), raw=True)
+                plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75), raw=True)
             else:
                 plot_props_avg = plot_props
             if smoothing_window is not None:
@@ -427,6 +438,115 @@ def visualize_trends(field_counts,
     fig.tight_layout()
     return fig, ax
 
+def visualize_keyword_change(field_counts,
+                             timestamp_counts,
+                             subset=None,
+                             aggs=[],
+                             field_filter_sets={"indorg":["ind"]},
+                             timestamp_filter_sets={"indorg":["ind"]},
+                             change_point=COVID_START, ## TODO: Year Over Year Change Option
+                             group_normalize=True,
+                             dropna=False,
+                             min_freq_per_group=5,
+                             k_top=15):
+    """
+
+    """
+    ## Copy
+    field_counts_df = field_counts.copy()
+    timestamp_counts_df = timestamp_counts.copy()
+    ## Data Filtering
+    if field_filter_sets:
+        ## Apply Filtering to Keyword Set
+        field_index = list(field_counts_df.index.names)
+        field_counts_df.reset_index(inplace=True)
+        for field, values in field_filter_sets.items():
+            field_counts_df = field_counts_df.loc[field_counts_df[field].isin(set(values))].copy()
+        field_counts_df = field_counts_df.set_index(field_index)
+    if timestamp_filter_sets:
+        ## Apply Filtering To Timestamp Set
+        for field, values in timestamp_filter_sets.items():
+            timestamp_counts_df = timestamp_counts_df.loc[timestamp_counts_df[field].isin(set(values))].copy()
+    ## Keyword Selection (If Desired)
+    if subset is not None:
+        field_counts_df = field_counts_df[subset]
+    ## Cleaning (Unknown / Missing Aggregation Fields)
+    field_index = list(field_counts_df.index.names)
+    field_columns = list(field_counts_df.columns)
+    if dropna:
+        field_counts_df = field_counts_df.reset_index().dropna(subset=aggs,how="any")
+        timestamp_counts_df = timestamp_counts_df.dropna(subset=aggs,how="any")
+    else:
+        field_counts_df = field_counts_df.reset_index()
+        for a in aggs:
+            field_counts_df[a] = field_counts_df[a].fillna("unk")
+            timestamp_counts_df[a] = timestamp_counts_df[a].fillna("unk")
+    ## Get Date Boundaries
+    date_boundaries = {"pre":[],"post":[]}
+    change_point_dt = pd.to_datetime(change_point)
+    for d in timestamp_counts_df["date"].unique():
+        if reverse_format_timestamp(d) < change_point_dt:
+            date_boundaries["pre"].append(d)
+        else:
+            date_boundaries["post"].append(d)
+    ## Aggregate Counts
+    if aggs:
+        field_counts_pre = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["pre"]))].\
+                            groupby(aggs)[field_columns].sum(axis=0).T
+        field_counts_post = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["post"]))].\
+                            groupby(aggs)[field_columns].sum(axis=0).T
+        timestamp_counts_pre = timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["pre"]))].groupby(aggs).size()
+        timestamp_counts_post = timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["post"]))].groupby(aggs).size()
+    else:
+        field_counts_pre = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["pre"]))]\
+                            [field_columns].sum(axis=0).to_frame("total")
+        field_counts_post = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["post"]))]\
+                            [field_columns].sum(axis=0).to_frame("total")
+        timestamp_counts_pre = pd.Series(index=["total"],
+                                         data=[len(timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["pre"]))])])
+        timestamp_counts_post = pd.Series(index=["total"],
+                                          data=len(timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["post"]))]))
+    pre_total = timestamp_counts_pre.sum()
+    post_total = timestamp_counts_post.sum()
+    ## Frequency Filtering
+    field_counts_pre = field_counts_pre.loc[(field_counts_pre >= min_freq_per_group).all(axis=1)]
+    field_counts_post = field_counts_post.loc[(field_counts_post >= min_freq_per_group).all(axis=1)]
+    terms = sorted(set(field_counts_pre.index) & set(field_counts_post.index))
+    ## Average Change
+    pre_freq = field_counts_pre.sum(axis=1).loc[terms] / timestamp_counts_pre.sum()
+    post_freq = field_counts_post.sum(axis=1).loc[terms] / timestamp_counts_post.sum()
+    avg_ratio = post_freq / pre_freq
+    terms_ordered = (avg_ratio.nsmallest(k_top).append(avg_ratio.nlargest(k_top))).drop_duplicates().sort_values()
+    n = len(terms_ordered)
+    ## Cycle Through Groups, Plotting Dynamics
+    groups = sorted(set(timestamp_counts_pre.index) | set(timestamp_counts_post.index))
+    total_height = 0.9
+    height = total_height / len(groups)
+    fig, ax = plt.subplots(1, 1, figsize=(10,5.8))
+    for g, group in enumerate(groups):
+        denom_pre = timestamp_counts_pre.loc[group] if group_normalize else pre_total
+        denom_post = timestamp_counts_post.loc[group] if group_normalize else post_total
+        gpre = field_counts_pre.loc[terms_ordered.index, group] / denom_pre
+        gpost = field_counts_post.loc[terms_ordered.index, group] / denom_post
+        gratio = np.log(gpost / gpre)
+        ax.barh((1-total_height)/2+np.arange(0,n)+g*height,
+                gratio.values,
+                color=f"C{g}",
+                height=height,
+                align="edge",
+                alpha=0.5,
+                label=group.title())
+    ax.axvline(0, color="black", linestyle="--", alpha=0.8)
+    ax.set_yticks(np.arange(0, n)+0.5)
+    ax.set_yticklabels(terms_ordered.index.tolist(), fontsize=8)
+    ax.legend(loc="lower right", frameon=True, framealpha=0.8)
+    ax.set_xlabel("Match Rate Log Ratio (Pre/Post {})".format(change_point), fontweight="bold")
+    ax.set_ylabel("Term (Ordered by Average Change)", fontweight="bold")
+    ax.set_title("Term Dynamics", fontweight="bold", fontstyle="italic", loc="left")
+    ax.set_ylim(0, n)
+    fig.tight_layout()
+    return fig, ax
+    
 def main():
     """
 
@@ -435,48 +555,70 @@ def main():
     files = sorted(glob(f"{DATA_DIR}*.gz"))
     ## Plot Directory
     _ = create_plot_dirs(PLOT_DIR)
-    ## Keyword Count Analysis
-    if KEYWORD_COUNTS:
+    ## Keyword Analysis
+    if KEYWORD_COUNTS or KEYWORD_COUNTS:
         ## Run Counter
+        LOGGER.info("Counting Keywords")
         keyword_counts, timestamp_counts = count_fields(files,
                                                         frequency="day",
                                                         fields=["keywords"],
                                                         keys=["date","demographics","location"])
-        ## Isolate Keyword Counts
-        for aggset, field_filter, time_filter, gnorm in AGGS:
-            fig, ax = visualize_trends(keyword_counts.loc["keywords"],
-                                               timestamp_counts,
-                                               subset=None,
-                                               aggs=aggset,
-                                               visualize=True,
-                                               field_filter_sets=field_filter,
-                                               timestamp_filter_sets=time_filter,
-                                               group_normalize=gnorm,
-                                               dropna=True,
-                                               smoothing_window=7)
-            fig.savefig("{}/keywords/{}_keyword_proportion.png".format(PLOT_DIR, "-".join(aggset)), dpi=300)
-            plt.close(fig)
-        ## Individual Keyword Breakdown (Require Average of k Per Day)
-        avg_per_day = 2
-        keyword_plot_thresh = len(timestamp_counts["date"].unique()) * avg_per_day
-        keywords_to_plot = keyword_counts.loc["keywords"].sum(axis=0).loc[keyword_counts.loc["keywords"].sum(axis=0) > keyword_plot_thresh].index.tolist()
-        for keyword in keywords_to_plot:
-            fig, ax = visualize_trends(keyword_counts.loc["keywords"],
+        ## Count Analysis Over Time
+        if KEYWORD_COUNTS:
+            LOGGER.info("Visualizing Keyword Matches Over Time")
+            ## Isolate Keyword Counts
+            for aggset, field_filter, time_filter, gnorm in AGGS:
+                fig, ax = visualize_trends(keyword_counts.loc["keywords"],
+                                        timestamp_counts,
+                                        subset=None,
+                                        aggs=aggset,
+                                        visualize=True,
+                                        field_filter_sets=field_filter,
+                                        timestamp_filter_sets=time_filter,
+                                        group_normalize=gnorm,
+                                        dropna=True,
+                                        smoothing_window=7)
+                fig.savefig("{}/keywords/{}_keyword_proportion.png".format(PLOT_DIR, "-".join(aggset)), dpi=300)
+                plt.close(fig)
+            ## Individual Keyword Breakdown (Require Average of k Per Day)
+            avg_per_day = 2
+            keyword_plot_thresh = len(timestamp_counts["date"].unique()) * avg_per_day
+            keywords_to_plot = keyword_counts.loc["keywords"].sum(axis=0).loc[keyword_counts.loc["keywords"].sum(axis=0) > keyword_plot_thresh].index.tolist()
+            for keyword in keywords_to_plot:
+                fig, ax = visualize_trends(keyword_counts.loc["keywords"],
                                         timestamp_counts,
                                         subset=[keyword],
                                         aggs=["date"],
                                         visualize=True,
-                                        field_filter_sets={"country":["United States"]},
-                                        timestamp_filter_sets={"country":["United States"]},
+                                        field_filter_sets={"indorg":["ind"],"country":["United States"]},
+                                        timestamp_filter_sets={"indorg":["ind"],"country":["United States"]},
                                         group_normalize=True,
                                         dropna=True,
                                         smoothing_window=7)
-            keyword_clean = keyword.replace(" ","-").replace(".","-").replace("/","-")
-            fig.savefig("{}/keywords/timeseries/{}_keyword_proportion.png".format(PLOT_DIR, keyword_clean), dpi=300)
-            plt.close(fig)
-    ## Keyword Dynamics ## TODO
-
-    ## Classifier Predictions ## TODO
+                keyword_clean = keyword.replace(" ","-").replace(".","-").replace("/","-")
+                fig.savefig("{}/keywords/timeseries/{}_keyword_proportion.png".format(PLOT_DIR, keyword_clean), dpi=300)
+                plt.close(fig)
+        ## Keyword Dynamics ## TODO
+        if KEYWORD_DYNAMICS:
+            LOGGER.info("Visualizing Keyword Dynamics")
+            ## Isolate Keyword Counts
+            for aggset, field_filter, time_filter, gnorm in AGGS:
+                if "state" in aggset:
+                    continue
+                fig, ax = visualize_keyword_change(keyword_counts.loc["keywords"],
+                                                   timestamp_counts,
+                                                   subset=None,
+                                                   aggs=aggset[1:],
+                                                   field_filter_sets=field_filter,
+                                                   timestamp_filter_sets=time_filter,
+                                                   change_point=COVID_START,
+                                                   group_normalize=gnorm,
+                                                   dropna=True,
+                                                   min_freq_per_group=5,
+                                                   k_top=15)
+                fig.savefig("{}/keywords/{}_keyword_dynamics.png".format(PLOT_DIR, "-".join(aggset)), dpi=300)
+                plt.close(fig)
+    ## Classifier Predictions
     if MENTAL_HEALTH_COUNTS:
         ## Run Counter
         mental_health_counts, timestamp_counts = count_fields(files,
