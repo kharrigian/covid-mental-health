@@ -4,8 +4,8 @@
 ##############################
 
 ## Paths
-DATA_DIR = "./data/results/twitter/2018-2020/falconet-large/"
-PLOT_DIR = "./plots/twitter/2018-2020/falconet-large/"
+DATA_DIR = "./data/results/twitter/2018-2020/falconet-full/"
+PLOT_DIR = "./plots/twitter/2018-2020/falconet-full/"
 
 ## Analysis Flags
 KEYWORD_COUNTS = True
