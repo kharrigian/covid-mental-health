@@ -16,6 +16,7 @@ MENTAL_HEALTH_COUNTS = True
 MH_BINS=40
 MH_FIELDS=["anxiety","depression"]
 MH_POSITIVE_THRESHOLD=0.8
+SMOOTHING_WINDOW=30
 COVID_START="2020-03-01"
 AGGS = [(
             ["date"], ## Groups
@@ -68,6 +69,7 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from pandas.plotting import register_matplotlib_converters
+from statsmodels.stats.proportion import proportion_confint as bci
 
 ## Local
 from mhlib.util.logging import initialize_logger
@@ -316,7 +318,8 @@ def visualize_trends(field_counts,
                      timestamp_filter_sets={},
                      group_normalize=False,
                      dropna=False,
-                     smoothing_window=None):
+                     smoothing_window=None,
+                     min_support=100):
     """
 
     """
@@ -367,33 +370,36 @@ def visualize_trends(field_counts,
                linestyle="--",
                color="black",
                alpha=0.5,
-               label="COVID-19 Start ({})".format(COVID_START))
+               label="COVID-19 Start ({})".format(COVID_START),
+               zorder=10)
     if len(aggs) == 1:
         fielddata = field_counts_aggs.set_index("date")["count"]
-        tdata = timestamp_counts_aggs.set_index("date")["count"]
-        if group_normalize:
-            plot_props = fielddata / tdata
+        denom = timestamp_counts_aggs.set_index("date")["count"] if group_normalize else date_counts
+        fielddata = fielddata.reindex(dates).fillna(0)
+        denom = denom.reindex(dates).fillna(0)
+        if smoothing_window is None:
+            plot_props_avg = fielddata / denom
         else:
-            plot_props = fielddata / date_counts
-        ## re-index
-        plot_props = plot_props.reindex(dates).fillna(0)
-        if smoothing_window is not None:
-            plot_props_avg = plot_props.rolling(smoothing_window).median()
-            plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25), raw=True)
-            plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75), raw=True)
-        else:
-            plot_props_avg = plot_props
+            successes = fielddata.rolling(smoothing_window).sum().dropna()
+            nobs = denom.rolling(smoothing_window).sum().dropna()
+            plot_props_avg = successes / nobs
+            plot_props_low, plot_props_high = bci(count=successes,
+                                                  nobs=nobs + 1, ## Add 1 In Case of Missing Data
+                                                  alpha=0.05,
+                                                  method="normal")
+        plot_props_avg.loc[denom<min_support] = np.nan
+        plot_props_low.loc[denom<min_support] = np.nan
+        plot_props_high.loc[denom<min_support] = np.nan
         if smoothing_window is not None:
             ax.fill_between(plot_props_low.index,
                             plot_props_low,
                             plot_props_high,
-                            alpha=0.5)
+                            alpha=0.2)
         ax.plot(plot_props_avg.index,
                 plot_props_avg,
                 label = "Keyword Proportion",
-                linestyle = "--",
-                marker = "o",
-                alpha = 0.5)
+                linewidth = 2,
+                alpha = 0.8)
     else:
         ## Groups
         fieldgroups = field_counts_aggs.groupby(aggs[1:]).groups
@@ -401,32 +407,36 @@ def visualize_trends(field_counts,
         ## Visualize
         for p, (plot_group, plot_index) in enumerate(fieldgroups.items()):
             fielddata = field_counts_aggs.loc[plot_index].set_index("date")["count"]
-            tdata = timestamp_counts_aggs.loc[timegroups[plot_group]].set_index("date")["count"]
-            if group_normalize:
-                plot_props = fielddata / tdata
+            denom = timestamp_counts_aggs.loc[timegroups[plot_group]].set_index("date")["count"] if group_normalize \
+                    else date_counts
+            fielddata = fielddata.reindex(dates).fillna(0)
+            denom = denom.reindex(dates).fillna(0)
+            if smoothing_window is None:
+                plot_props_avg = fielddata / denom
             else:
-                plot_props = fielddata / date_counts
-            plot_props = plot_props.reindex(dates).fillna(0)
-            if smoothing_window is not None:
-                plot_props_avg = plot_props.rolling(smoothing_window).median()
-                plot_props_low = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 25), raw=True)
-                plot_props_high = plot_props.rolling(smoothing_window).apply(lambda x: np.nanpercentile(x, 75), raw=True)
-            else:
-                plot_props_avg = plot_props
+                successes = fielddata.rolling(smoothing_window).sum().dropna()
+                nobs = denom.rolling(smoothing_window).sum().dropna()
+                plot_props_avg = successes / nobs
+                plot_props_low, plot_props_high = bci(count=successes,
+                                                    nobs=nobs + 1, ## Add 1 In Case of Missing Data
+                                                    alpha=0.05,
+                                                    method="normal")
+            plot_props_avg.loc[denom<min_support] = np.nan
+            plot_props_low.loc[denom<min_support] = np.nan
+            plot_props_high.loc[denom<min_support] = np.nan
             if smoothing_window is not None:
                 ax.fill_between(plot_props_low.index,
                                 plot_props_low,
                                 plot_props_high,
-                                alpha=0.5,
+                                alpha=0.2,
                                 color=f"C{p}")
             ax.plot(plot_props_avg.index,
                     plot_props_avg,
                     label = plot_group.title(),
-                    linestyle = "--",
-                    marker = "o",
-                    alpha = 0.5,
+                    alpha = 0.8,
+                    linewidth=2,
                     color=f"C{p}")
-        leg = ax.legend(bbox_to_anchor = (1.01, 1), loc="upper left", frameon=False, title="Group")
+        leg = ax.legend(loc="lower left", frameon=True, title="Group", framealpha=0.9)
     if not group_normalize:
         ax.set_ylabel("Proportion of All Posts", fontweight="bold")
     else:
@@ -512,38 +522,44 @@ def visualize_keyword_change(field_counts,
     field_counts_pre = field_counts_pre.loc[(field_counts_pre >= min_freq_per_group).all(axis=1)]
     field_counts_post = field_counts_post.loc[(field_counts_post >= min_freq_per_group).all(axis=1)]
     terms = sorted(set(field_counts_pre.index) & set(field_counts_post.index))
-    ## Average Change
-    pre_freq = field_counts_pre.sum(axis=1).loc[terms] / timestamp_counts_pre.sum()
-    post_freq = field_counts_post.sum(axis=1).loc[terms] / timestamp_counts_post.sum()
-    avg_ratio = post_freq / pre_freq
-    terms_ordered = (avg_ratio.nsmallest(k_top).append(avg_ratio.nlargest(k_top))).drop_duplicates().sort_values()
-    n = len(terms_ordered)
     ## Cycle Through Groups, Plotting Dynamics
     groups = sorted(set(timestamp_counts_pre.index) | set(timestamp_counts_post.index))
-    total_height = 0.9
-    height = total_height / len(groups)
-    fig, ax = plt.subplots(1, 1, figsize=(10,5.8))
+    fig, ax = plt.subplots(1, len(groups), figsize=(10,5.8))
     for g, group in enumerate(groups):
+        ## Isolate Group Data
+        counts_pre = field_counts_pre.loc[terms, group]
+        counts_post = field_counts_post.loc[terms, group]
         denom_pre = timestamp_counts_pre.loc[group] if group_normalize else pre_total
         denom_post = timestamp_counts_post.loc[group] if group_normalize else post_total
-        gpre = field_counts_pre.loc[terms_ordered.index, group] / denom_pre
-        gpost = field_counts_post.loc[terms_ordered.index, group] / denom_post
-        gratio = np.log(gpost / gpre)
-        ax.barh((1-total_height)/2+np.arange(0,n)+g*height,
-                gratio.values,
-                color=f"C{g}",
-                height=height,
-                align="edge",
-                alpha=0.5,
-                label=group.title())
-    ax.axvline(0, color="black", linestyle="--", alpha=0.8)
-    ax.set_yticks(np.arange(0, n)+0.5)
-    ax.set_yticklabels(terms_ordered.index.tolist(), fontsize=8)
-    ax.legend(loc="lower right", frameon=True, framealpha=0.8)
-    ax.set_xlabel("Match Rate Log Ratio (Pre/Post {})".format(change_point), fontweight="bold")
-    ax.set_ylabel("Term (Ordered by Average Change)", fontweight="bold")
-    ax.set_title("Term Dynamics", fontweight="bold", fontstyle="italic", loc="left")
-    ax.set_ylim(0, n)
+        ## Compute Ratio
+        ratio = np.log((counts_post / denom_post) / (counts_pre / denom_pre)).sort_values()
+        ratio = (ratio.nsmallest(k_top).append(ratio.nlargest(k_top))).drop_duplicates().sort_values()
+        ## Compute Confidence Intervals
+        pre_ci_low, pre_ci_high = bci(counts_pre, denom_pre, alpha=0.05)
+        post_ci_low, post_ci_high = bci(counts_post, denom_post, alpha=0.05)
+        ratio_high = np.log(post_ci_high / pre_ci_low).loc[ratio.index]
+        ratio_low = np.log(post_ci_low / pre_ci_high).loc[ratio.index]
+        if len(groups) == 1:
+            pax = ax
+        else:
+            pax = ax[g]
+        pax.barh(np.arange(0, len(ratio)),
+                 left=ratio_low,
+                 width=ratio_high-ratio_low,
+                 color=f"C{g}",
+                 alpha=0.2)
+        pax.scatter(ratio,
+                    np.arange(0, len(ratio)),
+                    color=f"C{g}",
+                    alpha=0.8,
+                    marker="o",
+                    s=10)
+        pax.axvline(0, color="black", linestyle="--", alpha=0.8)
+        pax.set_yticks(np.arange(0, len(ratio)))
+        pax.set_yticklabels(ratio.index.tolist(), fontsize=8)
+        pax.set_xlabel("Match Rate Log Ratio\n(Pre/Post {})".format(change_point), fontweight="bold")
+        pax.set_title("{} Term Dynamics".format(group.title()), fontweight="bold", fontstyle="italic", loc="left")
+        pax.set_ylim(-.5, len(ratio)-.5)
     fig.tight_layout()
     return fig, ax
     
@@ -565,36 +581,37 @@ def main():
                                                         keys=["date","demographics","location"])
         ## Count Analysis Over Time
         if KEYWORD_COUNTS:
-            LOGGER.info("Visualizing Keyword Matches Over Time")
             ## Isolate Keyword Counts
+            LOGGER.info("Visualizing Keyword Matches Over Time (Aggregations)")
             for aggset, field_filter, time_filter, gnorm in AGGS:
                 fig, ax = visualize_trends(keyword_counts.loc["keywords"],
-                                        timestamp_counts,
-                                        subset=None,
-                                        aggs=aggset,
-                                        visualize=True,
-                                        field_filter_sets=field_filter,
-                                        timestamp_filter_sets=time_filter,
-                                        group_normalize=gnorm,
-                                        dropna=True,
-                                        smoothing_window=7)
+                                           timestamp_counts,
+                                           subset=None,
+                                           aggs=aggset,
+                                           visualize=True,
+                                           field_filter_sets=field_filter,
+                                           timestamp_filter_sets=time_filter,
+                                           group_normalize=gnorm,
+                                           dropna=True,
+                                           smoothing_window=SMOOTHING_WINDOW)
                 fig.savefig("{}/keywords/{}_keyword_proportion.png".format(PLOT_DIR, "-".join(aggset)), dpi=300)
                 plt.close(fig)
-            ## Individual Keyword Breakdown (Require Average of k Per Day)
-            avg_per_day = 2
+            ## Individual Keyword Breakdown (Require Average of k Per Week)
+            avg_per_day = 2 / 7
             keyword_plot_thresh = len(timestamp_counts["date"].unique()) * avg_per_day
             keywords_to_plot = keyword_counts.loc["keywords"].sum(axis=0).loc[keyword_counts.loc["keywords"].sum(axis=0) > keyword_plot_thresh].index.tolist()
-            for keyword in keywords_to_plot:
+            LOGGER.info("Visualizing Keyword Matches Over Time (Individual Breakdowns)")
+            for keyword in tqdm(keywords_to_plot, desc="Keyword", file=sys.stdout):
                 fig, ax = visualize_trends(keyword_counts.loc["keywords"],
-                                        timestamp_counts,
-                                        subset=[keyword],
-                                        aggs=["date"],
-                                        visualize=True,
-                                        field_filter_sets={"indorg":["ind"],"country":["United States"]},
-                                        timestamp_filter_sets={"indorg":["ind"],"country":["United States"]},
-                                        group_normalize=True,
-                                        dropna=True,
-                                        smoothing_window=7)
+                                           timestamp_counts,
+                                           subset=[keyword],
+                                           aggs=["date"],
+                                           visualize=True,
+                                           field_filter_sets={"indorg":["ind"]},
+                                           timestamp_filter_sets={"indorg":["ind"]},
+                                           group_normalize=True,
+                                           dropna=True,
+                                           smoothing_window=SMOOTHING_WINDOW)
                 keyword_clean = keyword.replace(" ","-").replace(".","-").replace("/","-")
                 fig.savefig("{}/keywords/timeseries/{}_keyword_proportion.png".format(PLOT_DIR, keyword_clean), dpi=300)
                 plt.close(fig)
@@ -621,6 +638,7 @@ def main():
     ## Classifier Predictions
     if MENTAL_HEALTH_COUNTS:
         ## Run Counter
+        LOGGER.info("Counting Classifier Predictions")
         mental_health_counts, timestamp_counts = count_fields(files,
                                                               frequency="day",
                                                               fields=MH_FIELDS,
@@ -639,6 +657,7 @@ def main():
         ## Cycle Through Conditions
         for condition in MH_FIELDS:
             ## Get Counts
+            LOGGER.info(f"Visualizing Trends: {condition}")
             condition_counts = mental_health_counts.loc[condition].copy()
             for aggset, field_filter, time_filter, gnorm in AGGS:
                 fig, ax = visualize_trends(condition_counts,
@@ -650,7 +669,7 @@ def main():
                                            timestamp_filter_sets=time_filter,
                                            group_normalize=gnorm,
                                            dropna=True,
-                                           smoothing_window=7)
+                                           smoothing_window=SMOOTHING_WINDOW)
                 fig.savefig("{}/models/{}_{}_proportion.png".format(PLOT_DIR, condition, "-".join(aggset)), dpi=300)
                 plt.close(fig)
 
