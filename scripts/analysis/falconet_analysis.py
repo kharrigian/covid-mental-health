@@ -596,8 +596,8 @@ def main():
                                            smoothing_window=SMOOTHING_WINDOW)
                 fig.savefig("{}/keywords/{}_keyword_proportion.png".format(PLOT_DIR, "-".join(aggset)), dpi=300)
                 plt.close(fig)
-            ## Individual Keyword Breakdown (Require Average of k Per Week)
-            avg_per_day = 2 / 7
+            ## Individual Keyword Breakdown (Require Average of k Per Window)
+            avg_per_day = 2 / SMOOTHING_WINDOW
             keyword_plot_thresh = len(timestamp_counts["date"].unique()) * avg_per_day
             keywords_to_plot = keyword_counts.loc["keywords"].sum(axis=0).loc[keyword_counts.loc["keywords"].sum(axis=0) > keyword_plot_thresh].index.tolist()
             LOGGER.info("Visualizing Keyword Matches Over Time (Individual Breakdowns)")
