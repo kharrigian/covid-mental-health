@@ -4,8 +4,8 @@
 ##############################
 
 ## Paths
-DATA_DIR = "./data/results/twitter/2018-2020/falconet-full/"
-PLOT_DIR = "./plots/twitter/2018-2020/falconet-full/"
+DATA_DIR = "./data/results/twitter/2018-2020/falconet-2020/"
+PLOT_DIR = "./plots/twitter/2018-2020/falconet-2020/"
 
 ## Analysis Flags
 KEYWORD_COUNTS = True
@@ -13,7 +13,6 @@ KEYWORD_DYNAMICS = True
 MENTAL_HEALTH_COUNTS = True
 
 ## Analysis Parameters
-MH_BINS=40
 MH_FIELDS=["anxiety","depression"]
 MH_POSITIVE_THRESHOLD=0.8
 SMOOTHING_WINDOW=30
@@ -81,7 +80,8 @@ from mhlib.util.logging import initialize_logger
 ## Initialize Logger
 LOGGER = initialize_logger()
 
-## Precision of Bin Rounding
+## Probability Bins
+MH_BINS=40
 BIN_PREC = 4
 
 ## Register Timestamp Converters for Plotting
@@ -502,9 +502,9 @@ def visualize_keyword_change(field_counts,
     ## Aggregate Counts
     if aggs:
         field_counts_pre = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["pre"]))].\
-                            groupby(aggs)[field_columns].sum(axis=0).T
+                            groupby(aggs)[field_columns].sum().T
         field_counts_post = field_counts_df.loc[field_counts_df["date"].isin(set(date_boundaries["post"]))].\
-                            groupby(aggs)[field_columns].sum(axis=0).T
+                            groupby(aggs)[field_columns].sum().T
         timestamp_counts_pre = timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["pre"]))].groupby(aggs).size()
         timestamp_counts_post = timestamp_counts_df.loc[timestamp_counts_df["date"].isin(set(date_boundaries["post"]))].groupby(aggs).size()
     else:
