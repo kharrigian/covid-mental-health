@@ -36,7 +36,9 @@ ANALYSIS_START = "2019-01-01"
 COVID_START = "2020-02-01"
 
 ## Analysis
-RUN_KEYWORD_ANALYSIS = False
+RUN_KEYWORD_ANALYSIS = True
+INCLUDE_HASHTAGS = True
+INCLUDE_MENTIONS = False
 
 ## Multiprocessing
 NUM_JOBS = 4
@@ -102,6 +104,9 @@ if not os.path.exists(CACHE_DIR):
 
 ## Date Resolution (Changing May Break Expected Visualizations/Analysis)
 DATE_RES = "day"
+
+## Special Characters
+SPECIAL = "“”…‘’´"
 
 ###################
 ### Helpers
@@ -175,7 +180,8 @@ def replace_emojis(features):
 ### Functions
 ###################
 
-def create_regex_dict(terms):
+def create_regex_dict(terms,
+                      include_hashtag=True):
     """
 
     """
@@ -185,13 +191,33 @@ def create_regex_dict(terms):
         t_stem = re.escape(t.rstrip("*"))
         if t_stem.isupper():
             regex_dict[t] = (re.compile(t_stem), is_stem)
+            if include_hashtag:
+                regex_dict["#"+t] = (re.compile("#" + t_stem), is_stem)
         else:
             regex_dict[t] = (re.compile(t_stem, re.IGNORECASE), is_stem)
+            if include_hashtag:
+                regex_dict["#"+t] = (re.compile("#"+t_stem, re.IGNORECASE), is_stem)
     return regex_dict
+
+def _starts_with(text,
+                 index,
+                 prefix):
+    """
+
+    """
+    i = index
+    while i > 0:
+        if text[i] == " ":
+            return False
+        if text[i] == prefix:
+            return True
+        i -= 1
+    return False
 
 def _search_full_words(text,
                        regex,
-                       stem=False):
+                       stem=False,
+                       include_mentions=False):
     """
 
     """
@@ -199,26 +225,50 @@ def _search_full_words(text,
     L = len(text)
     for match in regex.finditer(text):
         match_span = match.span()
-        starts_text = match_span[0] == 0 or text[match_span[0]-1] == " " or text[match_span[0]-1] in string.punctuation
-        ends_text = match_span[1] == L or text[match_span[1]] == " " or text[match_span[1]] in string.punctuation
+        if include_mentions:
+            starts_text = match_span[0] == 0 or text[match_span[0]-1] == " " or text[match_span[0]-1] in (string.punctuation + SPECIAL)
+        else:
+            starts_text =  match_span[0] == 0 or text[match_span[0]-1] == " " or (text[match_span[0]-1] in (string.punctuation + SPECIAL) and not _starts_with(text,match_span[0],"@"))
+        ends_text = match_span[1] == L or text[match_span[1]] == " " or text[match_span[1]] in (string.punctuation + SPECIAL)
         if starts_text:
             if stem or ends_text:
                 matches.append((text[match_span[0]:match_span[1]], match_span))
     return matches
 
 def pattern_match(text,
-                  pattern_re):
+                  pattern_re,
+                  include_mentions=False):
     """
 
     """
     matches = []
     for keyword, (pattern, is_stem) in pattern_re.items():
-        keyword_matches = _search_full_words(text, pattern, stem=is_stem)
+        keyword_matches = _search_full_words(text, pattern, stem=is_stem, include_mentions=include_mentions)
         keyword_matches = [(keyword, k[0], k[1]) for k in keyword_matches]
         matches.extend(keyword_matches)
     return matches
 
-def match_post(post):
+def filter_substrings(term_matches):
+    """
+
+    """
+    if len(term_matches) == 1:
+        return term_matches
+    term_matches_filtered = []
+    for t1, term_match_1 in enumerate(term_matches):
+        is_subinterval = False
+        for t2, term_match_2 in enumerate(term_matches):
+            if t1 == t2:
+                continue
+            if term_match_1[2][0] >= term_match_2[2][0] and term_match_1[2][1] <= term_match_2[2][1]:
+                is_subinterval = True
+                break
+        if not is_subinterval:
+            term_matches_filtered.append(term_match_1)
+    return term_matches_filtered
+
+def match_post(post,
+               include_mentions=False):
     """
 
     """    
@@ -232,14 +282,21 @@ def match_post(post):
                     match_cache[category] = {}
                 match_cache[category]["subreddits"] = post["subreddit"].lower()
                 match_found = True
-        term_matches = pattern_match(post["text"], MATCH_DICT[category]["terms"])
+        term_matches = pattern_match(post["text"].replace("\n"," "),
+                                     MATCH_DICT[category]["terms"],
+                                     include_mentions=include_mentions)
         if len(term_matches) > 0:
             if category not in match_cache:
                 match_cache[category] = {}
             match_cache[category]["terms"] = term_matches
             match_found = True
-    ## Metadata
-    if not match_found:
+    ## Filter Out Substrings (Or Early Return)
+    if match_cache:
+        for category, category_dict in match_cache.items():
+            if "terms" not in category_dict:
+                continue
+            match_cache[category]["terms"] = filter_substrings(match_cache[category]["terms"])
+    else:
         return None
     post_match_cache = {"matches":match_cache}
     meta_cols = ["user_id_str","created_utc","text"]
@@ -252,7 +309,8 @@ def match_post(post):
     return post_match_cache
 
 def find_matches(filename,
-                 level="day"):
+                 level="day",
+                 include_mentions=False):
     """
 
     """
@@ -271,7 +329,7 @@ def find_matches(filename,
             else:
                 n_seen += 1
                 timestamps.append(datetime.fromtimestamp(post["created_utc"]))
-                post_matches = match_post(post)
+                post_matches = match_post(post, include_mentions=include_mentions)
                 if post_matches is not None:
                     matches.append(post_matches)
     ## Format Timestamps
@@ -280,14 +338,15 @@ def find_matches(filename,
     return filename, matches, n, n_seen, timestamps
 
 def search_files(filenames,
-                 date_res="day"):
+                 date_res="day",
+                 include_mentions=False):
     """
 
     """
 
     ## Run Lookup
     mp = Pool(NUM_JOBS)
-    helper = partial(find_matches, level=date_res)
+    helper = partial(find_matches, level=date_res, include_mentions=include_mentions)
     res = list(tqdm(mp.imap_unordered(helper, filenames), total=len(filenames), desc="Searching For Matches", file=sys.stdout))
     mp.close()
     ## Parse
@@ -1242,22 +1301,22 @@ with open(COVID_SUBREDDIT_FILE,"r") as the_file:
 ## Create Match Dictionary (Subreddit Lists + Term Regular Expressions)
 MATCH_DICT = {
     "mental_health":{
-        "terms":create_regex_dict(MH_TERMS["terms"]["smhd"]),
+        "terms":create_regex_dict(MH_TERMS["terms"]["smhd"], INCLUDE_HASHTAGS),
         "subreddits":set(MH_SUBREDDITS["all"]) if PLATFORM == "reddit" else set(),
         "name":"SMHD"
     },
     "crisis":{
-        "terms":create_regex_dict(CRISIS_KEYWORDS),
+        "terms":create_regex_dict(CRISIS_KEYWORDS, INCLUDE_HASHTAGS),
         "subreddits":set(),
         "name":"JHU Crisis"
     },
     "mental_health_keywords":{
-        "terms":create_regex_dict(MH_KEYWORDS),
+        "terms":create_regex_dict(MH_KEYWORDS, INCLUDE_HASHTAGS),
         "subreddits":set(),
         "name":"JHU CLSP"
     },
     "covid":{
-        "terms":create_regex_dict(COVID_TERMS["covid"]),
+        "terms":create_regex_dict(COVID_TERMS["covid"], INCLUDE_HASHTAGS),
         "subreddits":set(COVID_SUBREDDITS["covid"]) if PLATFORM == "reddit" else set(),
         "name":"COVID-19"
     }
@@ -1272,7 +1331,8 @@ if not os.path.exists(match_cache_file) or RERUN:
     LOGGER.info("Starting Keyword Search")
     ## Search For Keyword/Subreddit Matches
     filenames, matches, n, n_seen, timestamps = search_files(filenames,
-                                                             date_res=DATE_RES)
+                                                             date_res=DATE_RES,
+                                                             include_mentions=INCLUDE_MENTIONS)
     ## Cache
     _ = joblib.dump({"filenames":filenames,
                      "matches":matches,
