@@ -34,21 +34,14 @@ from multiprocessing import Pool
 from collections import Counter
 
 ## External Libraries
-import joblib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import matplotlib.gridspec as gridspec
-from scipy.sparse import csr_matrix, vstack
 
 ## Mental Health Library
 from mhlib.util.logging import initialize_logger
-from mhlib.util.helpers import flatten, chunks
-from mhlib.model.vocab import Vocabulary
-from mhlib.model.file_vectorizer import File2Vec
-from mhlib.preprocess.preprocess import tokenizer
+from mhlib.util.helpers import flatten
 
 ###################
 ### Globals
@@ -142,9 +135,13 @@ def _search_full_words(text,
     for match in regex.finditer(text):
         match_span = match.span()
         if include_mentions:
-            starts_text = match_span[0] == 0 or text[match_span[0]-1] == " " or text[match_span[0]-1] in (string.punctuation + SPECIAL)
+            starts_text = match_span[0] == 0 or \
+                          text[match_span[0]-1] == " " or \
+                          text[match_span[0]-1] in (string.punctuation + SPECIAL)
         else:
-            starts_text =  match_span[0] == 0 or text[match_span[0]-1] == " " or (text[match_span[0]-1] in (string.punctuation + SPECIAL) and not _starts_with(text,match_span[0],"@"))
+            starts_text =  match_span[0] == 0 or \
+                           text[match_span[0]-1] == " " or \
+                           (text[match_span[0]-1] in (string.punctuation + SPECIAL) and not _starts_with(text,match_span[0],"@"))
         ends_text = match_span[1] == L or text[match_span[1]] == " " or text[match_span[1]] in (string.punctuation + SPECIAL)
         if starts_text:
             if stem or ends_text:
@@ -267,14 +264,15 @@ def find_matches(filename,
     return filename, matches, n, n_seen, timestamps
 
 def search_files(filenames,
-                 date_res="day"):
+                 date_res="day",
+                 include_mentions=False):
     """
 
     """
 
     ## Run Lookup
     mp = Pool(NUM_JOBS)
-    helper = partial(find_matches, level=date_res)
+    helper = partial(find_matches, level=date_res, include_mentions=include_mentions)
     res = list(tqdm(mp.imap_unordered(helper, filenames), total=len(filenames), desc="Searching For Matches", file=sys.stdout))
     mp.close()
     ## Parse
@@ -343,7 +341,8 @@ filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
 
 ## Search For Keyword/Subreddit Matches
 filenames, matches, n, n_seen, timestamps = search_files(filenames,
-                                                         date_res=DATE_RES)
+                                                         date_res=DATE_RES,
+                                                         include_mentions=False)
 
 ## Disagreement
 disagreements = [i for i in flatten(matches) if i["regex_keywords"] != i["falconet_keywords"]]
@@ -359,7 +358,7 @@ outliers = np.log((merged_counts["regex"] + 0.01) / (merged_counts["falconet"] +
 ## Plot Comparison
 fig, ax = plt.subplots(1, 2, figsize=(10,5.8))
 merged_counts.plot.scatter("regex","falconet",ax=ax[0])
-ax[0].plot([0, regex_counts.max()],[0, regex_counts.max()], color="black", zorder=10)
+ax[0].plot([0, regex_counts.max().item()],[0, regex_counts.max().item()], color="black", zorder=10)
 outliers.head(15).append(outliers.tail(15)).plot.barh(ax=ax[1], alpha=0.8)
 ax[1].axvline(0, color="black", alpha=0.8, linestyle="--")
 ax[0].set_xlabel("Regex Count")
