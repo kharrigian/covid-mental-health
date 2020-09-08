@@ -20,6 +20,8 @@ data/results
 
 ## Plots
 *.png
+plots/*/*/*/*/*.txt
+plots/*/*/*/*/*.csv
 
 ## Artifacts
 *pycache*
