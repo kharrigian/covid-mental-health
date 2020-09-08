@@ -1103,7 +1103,7 @@ def main():
             plt.close(fig)
     ## Representative Examples
     if MENTAL_HEALTH_REPRESENTATIVES:
-        for condition in MH_FILTER_SET:
+        for condition in MH_FIELDS:
             LOGGER.info(f"Identifying Representative Posts for Condition: {condition}")
             ## Generate Summary Data
             (fig, ax), summary_str, shap_ci = get_representative_tweets(files,
