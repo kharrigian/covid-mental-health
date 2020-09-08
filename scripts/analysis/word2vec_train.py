@@ -9,12 +9,14 @@ import sys
 import json
 import gzip
 import argparse
-from random import random
+import random
 from glob import glob
+from uuid import uuid4
 
 ## External
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from nltk.tokenize import sent_tokenize
 from gensim.models import Word2Vec
 from gensim.models.callbacks import CallbackAny2Vec
@@ -71,6 +73,7 @@ def parse_arguments():
     parser.add_argument("--end_date", type=str, default=None, help="Upper date bound")
     parser.add_argument("--sample_size", type=int, default=None, help="Maximum number of training files")
     parser.add_argument("--sample_rate", type=float, default=1, help="Post-level sample rate (0,1]")
+    parser.add_argument("--pretokenize", action="store_true", default=False, help="Run tokenization once at the start and cache on disk.")
     parser.add_argument("--model_dim", type=int, default=200, help="Vector dimensionality")
     parser.add_argument("--model_min_freq", type=int, default=5, help="Minimum token frequency")
     parser.add_argument("--model_context_size", type=int, default=5, help="Context window")
@@ -99,6 +102,7 @@ class FileStream(object):
                  filenames,
                  min_date=None,
                  max_date=None,
+                 pretokenized=False,
                  randomized=True,
                  n_samples=None,
                  shuffle=False,
@@ -111,6 +115,7 @@ class FileStream(object):
             filenames (list of str): Training file paths
             min_date (datetime or None): Lower date boundary
             max_date (datetime or None): Upper date boundary
+            pretokenized (bool): Specifies whether to use existing "text_tokenized" field
             randomized (bool): Whether any random sampling of posts should be uniform
             n_samples (int, float, or None): Post-level sampling
             shuffle (bool): Whether to shuffle filenames at start of an iteration
@@ -125,12 +130,15 @@ class FileStream(object):
         self.filenames = filenames
         self.min_date = min_date
         self.max_date = max_date
+        self.pretokenized = pretokenized
         self.randomized = randomized
         self.n_samples = n_samples
         self.shuffle = shuffle
         self.random_state = random_state
         ## Set Random Seed
         np.random.seed(self.random_state)
+        self.random = random.Random(self.random_state)
+
 
     def __iter__(self):
         """
@@ -145,22 +153,46 @@ class FileStream(object):
         """
         ## Shuffle (If Desired)
         if self.shuffle:
-            filenames = sorted(self.filenames, key=lambda k: random())
+            filenames = sorted(self.filenames, key=lambda k: self.random.uniform(0,1))
         else:
             filenames = self.filenames
         ## Cycle Through Filenames
         for file in filenames:
-            ## Load File
-            file_data = self.load_text(file,
-                                       min_date=self.min_date,
-                                       max_date=self.max_date,
-                                       randomized=self.randomized,
-                                       n_samples=self.n_samples)
-            ## Parse and Tokenize Sentences
-            sentences = self.tokenize_user_data(file_data)
+            if self.pretokenized:
+                ## Load Tokens
+                sentences = self.load_tokens(file,
+                                             n_samples=self.n_samples)
+            else:
+                ## Load Original File
+                file_data = self.load_text(file,
+                                           min_date=self.min_date,
+                                           max_date=self.max_date,
+                                           randomized=self.randomized,
+                                           n_samples=self.n_samples)
+                ## Parse and Tokenize Sentences
+                sentences = self.tokenize_user_data(file_data)
             ## Yield Sentences
             for sentence in sentences:
                 yield sentence
+    
+    def load_tokens(self,
+                    filename,
+                    n_samples=None):
+        """
+        Load Tokens (Assume date-based filter already completed)
+        """
+        ## Load Tokens
+        file_data = []
+        with gzip.open(filename,"r") as the_file:
+            for line in the_file:
+                file_data.append(json.loads(line))
+        ## Post-level Sampling
+        if n_samples is not None:
+            file_data = self.loader._select_documents_randomly(file_data,
+                                                               n_samples)
+        ## Flatten Sentences
+        sentences = flatten([i["text"] for i in file_data])
+        return sentences
 
     def load_text(self,
                   filename,
@@ -217,8 +249,8 @@ class FileStream(object):
         sentences = flatten(list(map(sent_tokenize, user_data)))
         ## Word Tokenization
         sentences = list(map(TOKENIZER.tokenize, sentences))
+        sentences = list(filter(lambda x: len(x) > 0, sentences))
         return sentences
-
 
 class LossCallback(CallbackAny2Vec):
     
@@ -284,6 +316,33 @@ def main():
     ## Downsample Files
     if args.sample_size is not None:
         filenames = sorted(np.random.choice(filenames, min(args.sample_size, len(filenames)), replace=False))
+    ## Pre-tokenization
+    if args.pretokenize:
+        ## Initialize Temporary Cache Directory
+        temp_dir = "temp_{}".format(str(uuid4()))
+        while os.path.exists(temp_dir):
+            temp_dir = "temp_{}".format(str(uuid()))
+        _ = os.makedirs(temp_dir)
+        ## Initialize Helper Class
+        file_stream = FileStream(filenames,
+                                 min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
+                                 max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                                 random_state=args.random_state)
+        ## Tokenize All Available Text in File
+        pretokenized_filenames = []
+        for f in tqdm(filenames, file=sys.stdout, desc="Tokenization"):
+            f_data = file_stream.load_text(filename=f,
+                                           min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
+                                           max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                                           n_samples=None)
+            f_tokens = [{"text":tokens} for tokens in list(map(lambda x: file_stream.tokenize_user_data([x]), f_data))]
+            fname = "{}/{}".format(temp_dir, os.path.basename(f))
+            with gzip.open(fname,"wt", encoding="utf-8") as the_file:
+                for post in f_tokens:
+                    the_file.write(json.dumps(post) + "\n")
+            pretokenized_filenames.append(fname)
+        ## Update Filesnames
+        filenames = pretokenized_filenames
     ## Initialize Word2Vec
     LOGGER.info("Initializing Word2Vec Model")
     word2vec = Word2Vec(size=args.model_dim,
@@ -302,6 +361,7 @@ def main():
     vocab_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                              pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
                               shuffle=False,
@@ -313,6 +373,7 @@ def main():
     train_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                              pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
                               shuffle=args.model_shuffle,
@@ -327,6 +388,10 @@ def main():
     LOGGER.info("Saving Model")
     word2vec.callbacks = ()
     word2vec.save(f"{args.outdir}word2vec.model")
+    ## Remove any temporary directories
+    if args.pretokenize:
+        LOGGER.info("Removing Temporary Data Directories")
+        _ = os.system("rm -rf {}".format(temp_dir))
     LOGGER.info("Script Complete!")    
 
 ############################
