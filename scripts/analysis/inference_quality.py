@@ -63,8 +63,8 @@ RESULTS_DIR = RESULTS_DIRS.get(PLATFORM)
 MODEL_PATHS = {
     ("reddit","anxiety"):"../mental-health/models/falconet_v2/20200824135147-SMHD-Anxiety/model.joblib",
     ("reddit","depression"):"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
-    ("twitter","anxiety"):"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
-    ("twitter","depression"):"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib"
+    ("twitter","anxiety"):"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib",
+    ("twitter","depression"):"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib"
 }
 LOGGER.info("Loading Model")
 MODEL = joblib.load(MODEL_PATHS.get((PLATFORM,CONDITION)))

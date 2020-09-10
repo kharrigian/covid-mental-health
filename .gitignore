@@ -20,6 +20,8 @@ data/results
 
 ## Plots
 *.png
+plots/*
+!plots/README.md
 
 ## Artifacts
 *pycache*
@@ -31,3 +33,4 @@ config.json
 
 ## Miscellaneous
 temp_scheduler/
+temp/
