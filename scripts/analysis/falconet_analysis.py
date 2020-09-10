@@ -1007,9 +1007,14 @@ def main():
                                            visualize=True,
                                            field_filter_sets=MH_FILTER_SET,
                                            timestamp_filter_sets=MH_FILTER_SET,
-                                           group_normalize=True,
+                                           group_normalize=False,
                                            dropna=True,
                                            smoothing_window=SMOOTHING_WINDOW)
+                ax.set_title("'{}' ({}-day Moving Average)".format(keyword.title(), SMOOTHING_WINDOW),
+                             loc="left",
+                             fontweight="bold",
+                             fontstyle="italic")
+                fig.tight_layout()
                 keyword_clean = keyword.replace(" ","-").replace(".","-").replace("/","-")
                 fig.savefig("{}/keywords/timeseries/{}_keyword_proportion.png".format(PLOT_DIR, keyword_clean), dpi=300)
                 plt.close(fig)
