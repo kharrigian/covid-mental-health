@@ -7,30 +7,33 @@
 USERNAME = "kharrigian"
 MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet_v2/"
 
+## General Inference Parameters
+CHUNKSIZE = 5000 ## Number of files to process at a time
+
 ## Inference Configuration
 # MODEL_FILE = "20200824135305-SMHD-Depression/model.joblib"
-# MODEL_FILE = "20200824135147-SMHD-Anxiety/model.joblib"
-# START_DATE = "2019-01-01"
-# END_DATE = "2020-06-15"
-# FREQ = "W-Mon"
-# WINDOW_SIZE = 4
-# STEP_SIZE = 1
-# RUN_NAME = "monthly-weekly_step"
-# PLATFORM = "reddit"
-# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
-# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
-
-MODEL_FILE = "20200824134720-Multitask-Depression/model.joblib"
-# MODEL_FILE = "20200824135027-Multitask-Anxiety/model.joblib"
+MODEL_FILE = "20200824135147-SMHD-Anxiety/model.joblib"
 START_DATE = "2019-01-01"
 END_DATE = "2020-06-15"
 FREQ = "W-Mon"
 WINDOW_SIZE = 4
 STEP_SIZE = 1
 RUN_NAME = "monthly-weekly_step"
-PLATFORM = "twitter"
-INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
-OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
+PLATFORM = "reddit"
+INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
+OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
+
+# MODEL_FILE = "20200824134720-Multitask-Depression/model.joblib"
+# MODEL_FILE = "20200824135027-Multitask-Anxiety/model.joblib"
+# START_DATE = "2019-01-01"
+# END_DATE = "2020-06-15"
+# FREQ = "W-Mon"
+# WINDOW_SIZE = 4
+# STEP_SIZE = 1
+# RUN_NAME = "monthly-weekly_step"
+# PLATFORM = "twitter"
+# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
 
 ## Hold For Complete
 HOLD_FOR_COMPLETE = False
@@ -128,7 +131,7 @@ BASE_SCRIPT = """
 #$ -e /home/kharrigian/gridlogs/python/covid_infer_{}_{}.err
 #$ -o /home/kharrigian/gridlogs/python/covid_infer_{}_{}.out
 #$ -pe smp 8
-#$ -l 'gpu=0,mem_free=32g,ram_free=32g'
+#$ -l 'gpu=0,mem_free=72g,ram_free=72g'
 
 ## Move to Home Directory (Place Where Virtual Environments Live)
 cd /home/kharrigian/
@@ -142,6 +145,7 @@ python ./scripts/model/infer.py \\
        {}{} \\
        --input {} \\
        --output_folder {}inference/{}/{}_{}/ \\
+       --chunksize {} \\
        --min_date {} \\
        --max_date {}
 """
@@ -183,6 +187,7 @@ for min_date, max_date in DATE_WINDOWS:
         RUN_NAME,
         min_date,
         max_date,
+        CHUNKSIZE,
         min_date,
         max_date
     )
