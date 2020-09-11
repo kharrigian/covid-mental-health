@@ -19,8 +19,10 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from scipy.sparse import vstack, csr_matrix
 
 ## Local
+from mhlib.util.helpers import chunks
 from mhlib.util.logging import initialize_logger
 from mhlib.preprocess.tokenizer import STOPWORDS
 
@@ -103,6 +105,10 @@ def parse_arguments():
                         action="store_true",
                         default=False,
                         help="If included, will not filter out COVID-related posts or subreddits")
+    parser.add_argument("--chunksize",
+                        default=None,
+                        type=int,
+                        help="Number of files to make inferences for at a time.")
     ## Parse Arguments
     args = parser.parse_args()
     ## Check Arguments
@@ -163,7 +169,8 @@ def predict_and_interpret(filenames,
                           interpret=False,
                           bootstrap_samples=100,
                           bootstrap_sample_percent=30,
-                          ignore_missing=True):
+                          ignore_missing=True,
+                          chunksize=None):
     """
 
     """
@@ -172,45 +179,76 @@ def predict_and_interpret(filenames,
         min_date=pd.to_datetime(min_date)
     if max_date is not None and isinstance(max_date,str):
         max_date=pd.to_datetime(max_date)
-    ## Vectorize the data
-    LOGGER.info("Vectorizing Test Files")
-    test_files, X_test, _ = model._load_vectors(filenames,
-                                                None,
-                                                min_date=min_date,
-                                                max_date=max_date,
-                                                n_samples=n_samples, 
-                                                randomized=randomized)
-    ## Count Documents Per File
-    n = np.zeros(len(test_files))
-    for i, f in tqdm(enumerate(test_files), desc="Counting Support", file=sys.stdout, total=len(test_files)):
-        n[i] += len(model.vocab._loader.load_user_data(f,
-                                                       min_date=min_date,
-                                                       max_date=max_date,
-                                                       n_samples=n_samples,
-                                                       randomized=randomized))
-    ## Ignore Users without any features
-    if ignore_missing:
-        LOGGER.info("Filtering Out Users Without Any Recognized Terms")
-        missing_mask = np.nonzero(X_test.sum(axis=1)>0)[0]
-        test_files = [test_files[m] for m in missing_mask]
-        X_test = X_test[missing_mask]
-        n = n[missing_mask]
-    ## Count Tokens
-    tn = X_test.sum(axis=1)
-    tn_binary = (X_test>0).sum(axis=1)
-    ## Apply Any Additional Preprocessing
-    LOGGER.info("Generating Feature Set")
-    X_test = model.preprocessor.transform(X_test)    
-    ## Feed Forward
-    LOGGER.info("Computing Logits")
-    support = np.multiply(X_test, model.model.coef_)
-    logits = support.sum(axis=1) + model.model.intercept_
-    ## Get Predictions
-    LOGGER.info("Computing Probabilities")
-    p = 1 / (1 + np.exp(-logits))
-    y_pred = dict(zip(test_files, p))
+    ## Get Chunks
+    if chunksize is None:
+        chunksize = len(filenames)
+    filechunks = list(chunks(filenames, chunksize))
+    ## Initialize Cache
+    X_test = []
+    support = []
+    y_pred = {}
+    n = {}
+    tn = {}
+    tn_binary = {}
+    filtered_filenames = []
+    ## Cycle Through Chunks
+    for j, file_chunk in enumerate(filechunks):
+        LOGGER.info("[Beginning to Process File Chunk {}/{}]".format(j+1, len(filechunks)))
+        ## Vectorize the data
+        LOGGER.info("Vectorizing Test Files")
+        chunk_files, X_chunk, _, n_ = model._load_vectors(file_chunk,
+                                                          None,
+                                                          min_date=min_date,
+                                                          max_date=max_date,
+                                                          n_samples=n_samples, 
+                                                          randomized=randomized,
+                                                          return_post_counts=True)
+        ## Ignore Users without any features
+        if ignore_missing:
+            LOGGER.info("Filtering Out Users Without Any Recognized Terms")
+            missing_mask = np.nonzero(X_chunk.sum(axis=1)>0)[0]
+            chunk_files = [chunk_files[m] for m in missing_mask]
+            X_chunk = X_chunk[missing_mask]
+            n_ = n_[missing_mask]
+        n_ = dict((zip(chunk_files, n_)))
+        ## Count Tokens
+        tn_ = dict((filename, count) for filename, count in zip(chunk_files, X_chunk.sum(axis=1)))
+        tn_binary_ = dict((filename, count) for filename, count in zip(chunk_files, (X_chunk>0).sum(axis=1)))
+        ## Apply Any Additional Preprocessing
+        LOGGER.info("Generating Feature Set")
+        X_chunk = model.preprocessor.transform(X_chunk)    
+        ## Feed Forward
+        LOGGER.info("Computing Logits")
+        support_ = np.multiply(X_chunk, model.model.coef_)
+        logits = support_.sum(axis=1) + model.model.intercept_
+        ## Get Predictions
+        LOGGER.info("Computing Probabilities")
+        p = dict(zip(chunk_files, 1 / (1 + np.exp(-logits))))
+        ## Cache Results
+        if interpret:
+            X_test.append(X_chunk)
+            support.append(support_)
+        y_pred.update(p)
+        n.update(n_)
+        tn.update(tn_)
+        tn_binary.update(tn_binary_)
+        filtered_filenames.extend(chunk_files)
+    ## Format Cache
+    n = np.array([n[filename] for filename in filtered_filenames])
+    tn = np.array([tn[filename] for filename in filtered_filenames])
+    tn_binary = np.array([tn_binary[filename] for filename in filtered_filenames])
+    ## Interpretation
     feature_range = None
     if interpret:
+        ## Concatenate Features and Support
+        if isinstance(X_test[0], csr_matrix):
+            X_test = vstack(X_test).toarray()
+        else:
+            X_test = np.vstack(X_test)
+        if isinstance(support[0], csr_matrix):
+            support = vstack(support)
+        else:
+            support = np.vstack(support)
         ## Get Features
         feature_names = model.get_feature_names()
         ## Get Feature Range (Bootstrap used for Confidence Intervals)
@@ -221,8 +259,8 @@ def predict_and_interpret(filenames,
             feature_range.append(support[sind].mean(axis=0))
         feature_range = np.percentile(np.vstack(feature_range), [2.5, 50, 97.5], axis=0)
         feature_range = pd.DataFrame(feature_range.T,
-                                    index=feature_names,
-                                    columns=["lower","median","upper"])
+                                     index=feature_names,
+                                     columns=["lower","median","upper"])
     return y_pred, feature_range, n, tn, tn_binary
 
 def plot_feature_range(feature_range,
@@ -306,7 +344,8 @@ def main():
                                                                     interpret=args.analyze_features,
                                                                     bootstrap_samples=args.bootstrap_samples,
                                                                     bootstrap_sample_percent=args.bootstrap_sample_percent,
-                                                                    ignore_missing=not args.keep_missing)
+                                                                    ignore_missing=not args.keep_missing,
+                                                                    chunksize=args.chunksize)
     ## Combine Predictions and Support
     y_pred = pd.DataFrame(pd.Series(y_pred),columns=["y_pred"])
     y_pred["support"] = n
