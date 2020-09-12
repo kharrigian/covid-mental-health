@@ -10,7 +10,11 @@ COUNTS_DIR = "./data/processed/twitter/2018-2020/counts/"
 RERUN_COUNTS = False
 
 ## Choose Plot Directory
-PLOT_DIR = "./plots/twitter/2018-2020/"
+PLOT_DIR = "./plots/twitter/2018-2020/sample/"
+
+## Date Filtering
+START_DATE = "2018-01-01"
+END_DATE = "2020-06-20"
 
 ##################
 ### Imports
@@ -109,16 +113,30 @@ count_cache_file = f"{COUNTS_DIR}count_cache.joblib"
 
 ## Load Counts
 if not os.path.exists(count_cache_file) or RERUN_COUNTS:
+    print("Building Count Matrix")
     X, users, dates = construct_count_matrix(count_cache_file)
 else:
+    print("Loading Existing Count Matrix")
     X, users, dates = load_count_matrix(count_cache_file)
 
 ## Format Dates
 dates = list(map(lambda i: datetime.strptime(i, "%Y_%m_%d"),dates))
 
+## Get Date Mask
+date_mask = []
+for d, date in enumerate(dates):
+    if date >= pd.to_datetime(START_DATE) and date <= pd.to_datetime(END_DATE):
+        date_mask.append(d)
+
+## Filter
+X = X[:, date_mask]
+dates = [dates[i] for i in date_mask]
+
 ##################
 ### Examine Distribution Statistics
 ##################
+
+print("Summarizing Distribution")
 
 ## Compute Post Distribution (Posts per User)
 post_distribution = pd.Series(Counter(np.array(X.sum(axis=1).T)[0]))
@@ -126,12 +144,12 @@ post_distribution = pd.Series(Counter(np.array(X.sum(axis=1).T)[0]))
 ## Plot Post Distribution
 fig, ax = plt.subplots()
 ax.scatter(post_distribution.index, post_distribution.values)
-ax.set_xscale("log")
-ax.set_yscale("log")
+ax.set_xscale("symlog")
+ax.set_yscale("symlog")
 ax.set_xlabel("# Tweets",fontweight="bold")
 ax.set_ylabel("# Users",fontweight="bold")
 fig.tight_layout()
-plt.savefig(f"{PLOT_DIR}twitter_post_distribution.png")
+plt.savefig(f"{PLOT_DIR}twitter_post_distribution.png", dpi=300)
 plt.close(fig)
 
 ## Compute Post Distribution (Posts Per Day)
@@ -143,21 +161,32 @@ post_time_distribution = post_time_distribution / 1e5
 
 ## Plot Post Distribution
 fig, ax = plt.subplots()
-post_time_distribution.plot(ax=ax,
-                            marker="o",
-                            linestyle="--",
-                            label="{} Missing Days (<100 tweets)".format(post_time_distribution.isnull().sum()))
+post_time_distribution.rolling(7).mean().plot(
+                                ax=ax,
+                                color="C0",
+                                linestyle="-",
+                                linewidth=2,
+                                alpha=0.8,
+                                label="7-day Average"
+)
+ax.scatter(post_time_distribution.index,
+           post_time_distribution.values,
+           color="C0",
+           alpha=0.2,
+           s=25)
 ax.set_xlabel("Date",fontweight="bold")
 ax.set_ylabel("# Posts (10k)", fontweight="bold")
 ax.legend(loc="upper right",frameon=True)
 fig.autofmt_xdate()
 fig.tight_layout()
-plt.savefig(f"{PLOT_DIR}twitter_post_distribution_time.png")
+plt.savefig(f"{PLOT_DIR}twitter_post_distribution_time.png", dpi=300)
 plt.close(fig)
 
 ##################
 ### Identify Cohort
 ##################
+
+print("Selecting Cohort")
 
 ## Choose Time Bin Threshold
 min_time_bin_threshold = 5
@@ -180,15 +209,19 @@ cohort_mask = np.array((X_agg>=min_time_bin_threshold).sum(axis=1)==filled_rows)
 cohort_mask = np.nonzero(cohort_mask)[0]
 cohort_users = [users[i] for i in cohort_mask]
 cohort_X = X[cohort_mask].toarray()
+cohort_X_agg = X_agg[cohort_mask].toarray()
 
 ## Identify Cohort (Filter Out Top 5% of Posters)
 total_post_threshold = np.nanpercentile(cohort_X.sum(axis=1), 95)
 cohort_mask = np.nonzero(cohort_X.sum(axis=1) < total_post_threshold)[0]
 cohort_users = [cohort_users[i] for i in cohort_mask]
 cohort_X = cohort_X[cohort_mask]
+cohort_X_agg = cohort_X_agg[cohort_mask]
 
 ## Dump
 outfile = f"{COUNTS_DIR}user_sample.txt"
 with open(outfile,"w") as the_file:
     for cu in cohort_users:
         the_file.write(f"{cu}\n")
+
+print("Script complete!")
