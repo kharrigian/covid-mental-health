@@ -4,37 +4,38 @@
 ####################
 
 ## Result Directory
-# RESULTS_DIR = "./data/results/reddit/2017-2020/inference/monthly-weekly_step/"
-RESULTS_DIR = "./data/results/twitter/2013-2014/inference/monthly-weekly_step/"
-RESULTS_DIR = "./data/results/twitter/2016/inference/monthly-weekly_step/"
-RESULTS_DIR = "./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
+RESULTS_DIR = "./data/results/reddit/2017-2020/inference/monthly-weekly_step/"
+# RESULTS_DIR = "./data/results/twitter/2013-2014/inference/monthly-weekly_step/"
+# RESULTS_DIR = "./data/results/twitter/2016/inference/monthly-weekly_step/"
+# RESULTS_DIR = "./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Plot Directory
-# PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
-PLOT_DIR = "./plots/twitter/2013-2014/inference/monthly-weekly_step/"
-PLOT_DIR = "./plots/twitter/2016/inference/monthly-weekly_step/"
-PLOT_DIR = "./plots/twitter/2018-2020/inference/monthly-weekly_step/"
+PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
+# PLOT_DIR = "./plots/twitter/2013-2014/inference/monthly-weekly_step/"
+# PLOT_DIR = "./plots/twitter/2016/inference/monthly-weekly_step/"
+# PLOT_DIR = "./plots/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Demographics / Geolocation Metadata
-# DEMOFILE = "./data/processed/reddit/2017-2020/geolocation.csv"
-DEMOFILE = "./data/processed/twitter/2013-2014/demographics.csv"
-DEMOFILE = "./data/processed/twitter/2016/demographics.csv"
-DEMOFILE = "./data/processed/twitter/2018-2020/demographics.csv"
+DEMOFILE = "./data/processed/reddit/2017-2020/geolocation.csv"
+# DEMOFILE = "./data/processed/twitter/2013-2014/demographics.csv"
+# DEMOFILE = "./data/processed/twitter/2016/demographics.csv"
+# DEMOFILE = "./data/processed/twitter/2018-2020/demographics.csv"
 
 ## Metadata
 FREQUENCY = "weekly"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
 CONDITION = "anxiety"
 
 ## Parameters
 POS_THRESHOLD = 0.5
 MIN_POSTS_PER_WINDOW = 10
 MIN_TOKENS_PER_WINDOW = 25
+RUN_FORECAST = True
 COVID_START = "2020-02-01"
 CACHE_CONCATENATION=True
-DEMO_FILTER=False
+DEMO_FILTER=True
 US_ONLY=True
-IND_ONLY=True
+IND_ONLY=False
 
 ####################
 ### Imports
@@ -173,17 +174,20 @@ dates = pd.to_datetime(predictions.columns)
 
 ## Filter Users (e.g. Location, Indorg Status)
 if DEMO_FILTER and os.path.exists(DEMOFILE):
+    LOGGER.info("Filtering Demographics")
     ## Identify Mask
-    demos = pd.read_csv(DEMOFILE,index_col=0)
     if PLATFORM == "twitter":
+        demos = pd.read_csv(DEMOFILE,index_col=0)
         if US_ONLY:
             demos = demos.loc[demos["country"]=="United States"]
         if IND_ONLY:
             demos = demos.loc[demos["indorg"]=="ind"]
     elif PLATFORM == "reddit":
+        demos = pd.read_csv(DEMOFILE, usecols=list(range(7)), index_col=0)
         if US_ONLY:
             demos = demos.loc[demos["country_argmax"]=="US"]
     demo_index = demos.index.map(os.path.abspath).str.replace("/raw/","/processed/")
+    demo_index = [d for d in demo_index if d in predictions.index]
     ## Apply Filters
     predictions = predictions.loc[demo_index]
     support = support.loc[demo_index]
@@ -253,12 +257,13 @@ for CI, CI_name, ylbl in zip([pred_CI, pred_CI_binary],
                              ["population_level","population_level_binary"],
                              [f"Mean Pr({CONDITION.title()})", f"Percent Pr({CONDITION.title()}) > {POS_THRESHOLD}"]):
     fig, ax = plt.subplots(figsize=(10,5.8))
-    ax.axvline(pd.to_datetime(COVID_START),
-               linestyle="--",
-               color="black",
-               linewidth=3,
-               alpha=.9,
-               label="COVID-19 Start ({})".format(COVID_START))
+    if RUN_FORECAST:
+        ax.axvline(pd.to_datetime(COVID_START),
+                   linestyle="--",
+                   color="black",
+                   linewidth=3,
+                   alpha=.9,
+                   label="COVID-19 Start ({})".format(COVID_START))
     ax.fill_between(CI.index,
                     CI["lower"].astype(float).values,
                     CI["upper"].astype(float).values,
@@ -327,7 +332,8 @@ ax.set_xlabel("Date",
 ax.set_ylabel("Proportion of Population Predicted w/ {}".format(CONDITION.title()),
               fontweight="bold")
 ax.set_ylim(bottom=0)
-ax.axvline(pd.to_datetime(COVID_START), color="black", linestyle="--", alpha=.8, label="COVID-19 Start")
+if RUN_FORECAST:
+    ax.axvline(pd.to_datetime(COVID_START), color="black", linestyle="--", alpha=.8, label="COVID-19 Start")
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 ax.legend(loc="upper left")
@@ -358,8 +364,9 @@ ax.set_xticklabels(list(map(lambda i, val: val.date() if i % 4 == 0 else "",
                    range(binary_threshold_median.shape[1]),
                    binary_threshold_median.columns)),
                    rotation=45, ha="right")
-ax.axvline(np.nonzero(binary_threshold_median.columns >= pd.to_datetime(COVID_START))[0][0]-.5,
-           color="black")
+if RUN_FORECAST:
+    ax.axvline(np.nonzero(binary_threshold_median.columns >= pd.to_datetime(COVID_START))[0][0]-.5,
+            color="black")
 cbar = fig.colorbar(m)
 cbar.set_label("Deviation From Mean", fontweight="bold")
 ax.set_xlabel("Date",
@@ -396,6 +403,9 @@ plt.close(f.fig)
 ####################
 ### Timeseries Modeling (Prophet)
 ####################
+
+if not RUN_FORECAST:
+    exit()
 
 ## Parameters
 n_models = 20
