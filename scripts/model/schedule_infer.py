@@ -12,28 +12,40 @@ CHUNKSIZE = 5000 ## Number of files to process at a time
 
 ## Inference Configuration
 # MODEL_FILE = "20200824135305-SMHD-Depression/model.joblib"
-MODEL_FILE = "20200824135147-SMHD-Anxiety/model.joblib"
-START_DATE = "2019-01-01"
-END_DATE = "2020-06-15"
-FREQ = "W-Mon"
-WINDOW_SIZE = 4
-STEP_SIZE = 1
-RUN_NAME = "monthly-weekly_step"
-PLATFORM = "reddit"
-INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
-OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
-
-# MODEL_FILE = "20200824134720-Multitask-Depression/model.joblib"
-# MODEL_FILE = "20200824135027-Multitask-Anxiety/model.joblib"
+# MODEL_FILE = "20200824135147-SMHD-Anxiety/model.joblib"
 # START_DATE = "2019-01-01"
 # END_DATE = "2020-06-15"
 # FREQ = "W-Mon"
 # WINDOW_SIZE = 4
 # STEP_SIZE = 1
 # RUN_NAME = "monthly-weekly_step"
-# PLATFORM = "twitter"
-# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
-# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
+# PLATFORM = "reddit"
+# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
+
+# MODEL_FILE = "20200824134720-Multitask-Depression/model.joblib"
+# MODEL_FILE = "20200824135027-Multitask-Anxiety/model.joblib"
+MODEL_FILE = "20200912132424-CLPsych-Depression/model.joblib"
+FREQ = "W-Mon"
+WINDOW_SIZE = 4
+STEP_SIZE = 1
+RUN_NAME = "monthly-weekly_step-clpsych"
+PLATFORM = "twitter"
+
+# START_DATE = "2013-01-01"
+# END_DATE = "2015-01-01"
+# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2013-2014/timelines/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2013-2014/"
+
+# START_DATE = "2016-01-01"
+# END_DATE = "2017-01-01"
+# INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2016/timelines/"
+# OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2016/"
+
+START_DATE = "2019-01-01"
+END_DATE = "2020-06-15"
+INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/twitter/2018-2020/timelines/"
+OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/"
 
 ## Hold For Complete
 HOLD_FOR_COMPLETE = False
