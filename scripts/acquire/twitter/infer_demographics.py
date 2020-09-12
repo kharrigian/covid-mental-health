@@ -106,7 +106,7 @@ def load_tweets(filename,
         tweets = list(filter(lambda t: not t["text"].startswith("RT ") or " RT " in t["text"], tweets))
     ## English Filter
     if exclude_non_english:
-        tweets = list(filter(lambda t: t["lang"]=="en", tweets))
+        tweets = list(filter(lambda t: t["lang"]=="en" if "lang" in t else False, tweets))
     return tweets
 
 def get_location_info(place):
@@ -233,6 +233,7 @@ def main():
                      min_res_threshold=MIN_RES_THRESHOLD)
     res = list(tqdm(mp.imap_unordered(helper, filenames),
                     desc="Demographic Resolver",
+                    position=0,
                     total=len(filenames),
                     file=sys.stdout))
     mp.close()
