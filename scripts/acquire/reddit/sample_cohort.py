@@ -2,6 +2,7 @@
 ## Input/Output Directories
 count_path = "./data/processed/reddit/2017-2020/counts/"
 cache_dir = "./data/processed/reddit/2017-2020/author_comment_counts/"
+plot_dir = "./plots/reddit/2017-2020/sample/"
 
 ####################
 ### Imports
@@ -112,9 +113,11 @@ else:
         date_range.append(min(date_range[-1] + timedelta(freq), pd.to_datetime(end_date)))
     date_range = [i.date().isoformat() for i in date_range]
 
-## Cache Directory
+## Cache Directory/Plot Directory
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir)
+if not os.path.exists(plot_dir):
+    os.makedirs(plot_dir)
 
 ## Get Comment Counts over Date Range
 author_chunks = list(chunks(sorted(counts.keys()), n=100))
@@ -148,7 +151,7 @@ for dstart, dstop in tqdm(zip(date_range[:-1], date_range[1:]), total=len(date_r
 activity_files = sorted(glob(f"{cache_dir}*.json.gz"))
 dates_from_file = lambda i: tuple(os.path.basename(i).split("_chunk")[0].split("_"))
 authors = sorted(counts.keys())
-author_index = dict(zip(authors), list(range(len(counts)))))
+author_index = dict(zip(authors, list(range(len(counts)))))
 date_index = dict((y, x) for x, y in enumerate(sorted(set(list(map(dates_from_file, activity_files))), key=lambda x: x[0])))
 X = np.zeros((len(author_index), len(date_index)))
 for chunk_file in tqdm(activity_files, desc="Loading Activity Data", file=sys.stdout):
@@ -176,11 +179,12 @@ fig, ax = plt.subplots()
 ax.scatter(total_posts_vc.index,
            total_posts_vc.values,
            alpha=0.5)
-ax.set_yscale("log")
+ax.set_yscale("symlog")
+ax.set_xscale("symlog")
 ax.set_xlabel("# Posts", fontweight="bold")
 ax.set_ylabel("# Users", fontweight="bold")
 fig.tight_layout()
-plt.savefig("./plots/reddit_post_distribution.png", dpi=300)
+plt.savefig(f"{plot_dir}reddit_post_distribution.png", dpi=300)
 plt.close()
 
 ####################
