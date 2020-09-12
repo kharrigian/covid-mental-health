@@ -5,7 +5,7 @@ Infer location for a list of reddit users using a pretrained inference model.
 
 ## Script Configuration
 SETTINGS_FILE = "../smgeo/configurations/settings.json"
-RAW_DATA_DIR = "./data/raw/reddit/2008-2020/histories/"
+RAW_DATA_DIR = "./data/raw/reddit/2017-2020/histories/"
 MODEL_FILE = "../smgeo/models/reddit/Global_TextSubredditTime/model.joblib"
 SMGEO_DIR = "../smgeo/"
 NUM_JOBS = 8
@@ -34,6 +34,7 @@ from smgeo.acquire.reddit import RedditData
 from smgeo.model import preprocess
 from smgeo.util.logging import initialize_logger
 from mhlib.util.multiprocessing import MyPool as Pool
+from mhlib.util.helpers import chunks
 
 #######################
 ### Globals
@@ -80,6 +81,10 @@ def parse_command_line():
                         default=None,
                         type=int,
                         help="Maximium number of documents to user for inference. Sorted by recency.")
+    parser.add_argument("--chunksize",
+                        default=None,
+                        type=int,
+                        help="How many files to process at a time")
     ## Parse Arguments
     args = parser.parse_args()
     ## Check That Required Files Exist
@@ -194,35 +199,47 @@ def main():
     args = parse_command_line()
     ## Load Settings
     settings = load_settings()
-    ## Load User List
-    user_data_paths = load_users()
-    ## Load Geolocation Inference Model
+    ## Update Max Documents Parameter Based On Command Line
     MODEL._vocabulary._max_docs = args.max_docs
-    ## Prepare User Data
-    user_data_paths, X, n = prepare_data(user_data_paths)
     ## Create Coordinate Grid
     if not args.known_coordinates:
         coordinates = MODEL._create_coordinate_grid(args.grid_cell_size)
     else:
         coordinates = load_known_coordinates(settings)
-    ## Make Predictions
-    LOGGER.info("Making Inferences")
-    _, P = MODEL.predict_proba(X, coordinates)
-    y_pred = pd.DataFrame(index=user_data_paths,
-                          data=coordinates[P.argmax(axis=1)],
-                          columns=["longitude_argmax","latitude_argmax"])
-    ## Reverse Geocoding
-    if args.reverse_geocode:
-        LOGGER.info("Reversing the Geolocation Inferences")
-        reverse = reverse_search(y_pred[["longitude_argmax","latitude_argmax"]].values)
-        for level, level_name in zip(["name","admin2","admin1","cc"],["city","county","state","country"]):
-            level_data = [i[level] for i in reverse]
-            y_pred[f"{level_name}_argmax"] = level_data
-    ## Add Posterior
-    if args.posterior:
-        P = pd.DataFrame(P, index=user_data_paths, columns=list(map(tuple, coordinates)))
-        y_pred = pd.merge(y_pred, P, left_index=True, right_index=True)
+    ## Load User List
+    user_data_paths = load_users()[:1000]
+    ## Format Data Paths into Chunks
+    if args.chunksize:
+        user_data_chunks = list(chunks(user_data_paths, args.chunksize))
+    else:
+        user_data_chunks = [user_data_paths]
+    ## Process Data in Chunks
+    all_preds = []
+    for d, data_chunk in enumerate(user_data_chunks):
+        ## Update User
+        LOGGER.info("[Processing User Data Chunk {}/{}]".format(d+1, len(user_data_chunks)))
+        ## Prepare User Data
+        data_chunk, X, n = prepare_data(data_chunk)
+        ## Make Predictions
+        LOGGER.info("Making Inferences")
+        _, P = MODEL.predict_proba(X, coordinates)
+        y_pred = pd.DataFrame(index=data_chunk,
+                              data=coordinates[P.argmax(axis=1)],
+                              columns=["longitude_argmax","latitude_argmax"])
+        ## Reverse Geocoding
+        if args.reverse_geocode:
+            LOGGER.info("Reversing the Geolocation Inferences")
+            reverse = reverse_search(y_pred[["longitude_argmax","latitude_argmax"]].values)
+            for level, level_name in zip(["name","admin2","admin1","cc"],["city","county","state","country"]):
+                level_data = [i[level] for i in reverse]
+                y_pred[f"{level_name}_argmax"] = level_data
+        ## Add Posterior
+        if args.posterior:
+            P = pd.DataFrame(P, index=data_chunk, columns=list(map(tuple, coordinates)))
+            y_pred = pd.merge(y_pred, P, left_index=True, right_index=True)
+        all_preds.append(y_pred)
     ## Cache
+    all_preds = pd.concat(all_preds)
     LOGGER.info("Caching Inferences")
     y_pred.to_csv(args.output_csv, index=True)
     ## Done
