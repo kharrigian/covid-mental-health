@@ -172,6 +172,7 @@ def process_tweet_file(f,
     ## Filtering
     if not keep_retweets:
         tweet_data = tweet_data.loc[~tweet_data["text"].str.startswith("RT")].reset_index(drop=True).copy()
+        tweet_data = tweet_data.loc[~tweet_data["text"].str.contains(" RT ")].reset_index(drop=True).copy()
     if not keep_non_english:
         tweet_data = tweet_data.loc[tweet_data["lang"]=="en"].reset_index(drop=True).copy()
     ## Tokenize Text
