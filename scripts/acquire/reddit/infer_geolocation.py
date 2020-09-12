@@ -241,7 +241,7 @@ def main():
     ## Cache
     all_preds = pd.concat(all_preds)
     LOGGER.info("Caching Inferences")
-    y_pred.to_csv(args.output_csv, index=True)
+    all_preds.to_csv(args.output_csv, index=True)
     ## Done
     LOGGER.info("Script complete.")
 
