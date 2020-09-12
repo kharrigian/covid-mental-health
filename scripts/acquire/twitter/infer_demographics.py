@@ -1,6 +1,10 @@
 
 
 ## Inputs
+# RAW_DIR = "./data/raw/twitter/2013-2014/timelines/"
+# OUTFILE = "./data/processed/twitter/2013-2014/demographics.csv"
+# RAW_DIR = "./data/raw/twitter/2016/timelines/"
+# OUTFILE = "./data/processed/twitter/2016/demographics.csv"
 RAW_DIR = "./data/raw/twitter/2018-2020/timelines/"
 OUTFILE = "./data/processed/twitter/2018-2020/demographics.csv"
 
@@ -219,7 +223,7 @@ def main():
     """
     ## Get Raw Files
     filenames = glob(f"{RAW_DIR}*.json.gz")
-    LOGGER.info(f"Found {len(filenames)} Files for Geolocation")
+    LOGGER.info(f"Found {len(filenames)} Files for Demographic Inference")
     ## Multiprocessing
     LOGGER.info("Starting Resolution")
     mp = Pool(JOBS)
