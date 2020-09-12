@@ -207,7 +207,7 @@ def main():
     else:
         coordinates = load_known_coordinates(settings)
     ## Load User List
-    user_data_paths = load_users()[:1000]
+    user_data_paths = load_users()
     ## Format Data Paths into Chunks
     if args.chunksize:
         user_data_chunks = list(chunks(user_data_paths, args.chunksize))
