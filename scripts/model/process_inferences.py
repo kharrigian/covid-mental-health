@@ -5,14 +5,20 @@
 
 ## Result Directory
 # RESULTS_DIR = "./data/results/reddit/2017-2020/inference/monthly-weekly_step/"
+RESULTS_DIR = "./data/results/twitter/2013-2014/inference/monthly-weekly_step/"
+RESULTS_DIR = "./data/results/twitter/2016/inference/monthly-weekly_step/"
 RESULTS_DIR = "./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Plot Directory
 # PLOT_DIR = "./plots/reddit/2017-2020/inference/monthly-weekly_step/"
+PLOT_DIR = "./plots/twitter/2013-2014/inference/monthly-weekly_step/"
+PLOT_DIR = "./plots/twitter/2016/inference/monthly-weekly_step/"
 PLOT_DIR = "./plots/twitter/2018-2020/inference/monthly-weekly_step/"
 
 ## Demographics / Geolocation Metadata
 # DEMOFILE = "./data/processed/reddit/2017-2020/geolocation.csv"
+DEMOFILE = "./data/processed/twitter/2013-2014/demographics.csv"
+DEMOFILE = "./data/processed/twitter/2016/demographics.csv"
 DEMOFILE = "./data/processed/twitter/2018-2020/demographics.csv"
 
 ## Metadata
@@ -26,6 +32,7 @@ MIN_POSTS_PER_WINDOW = 10
 MIN_TOKENS_PER_WINDOW = 25
 COVID_START = "2020-02-01"
 CACHE_CONCATENATION=True
+DEMO_FILTER=False
 US_ONLY=True
 IND_ONLY=True
 
@@ -164,21 +171,24 @@ for df in [predictions, support, tokens, unique_tokens]:
     df.drop(dates_drop, axis=1, inplace=True)
 dates = pd.to_datetime(predictions.columns)
 
-## TODO Filter Users (e.g. Location, Indorg Status)
-demos = pd.read_csv(DEMOFILE,index_col=0)
-if PLATFORM == "twitter":
-    if US_ONLY:
-        demos = demos.loc[demos["country"]=="United States"]
-    if IND_ONLY:
-        demos = demos.loc[demos["indorg"]=="ind"]
-elif PLATFORM == "reddit":
-    if US_ONLY:
-        demos = demos.loc[demos["country_argmax"]=="US"]
-demo_index = demos.index.map(os.path.abspath).str.replace("/raw/","/processed/")
-predictions = predictions.loc[demo_index]
-support = support.loc[demo_index]
-tokens = tokens.loc[demo_index]
-unique_tokens = unique_tokens.loc[demo_index]
+## Filter Users (e.g. Location, Indorg Status)
+if DEMO_FILTER and os.path.exists(DEMOFILE):
+    ## Identify Mask
+    demos = pd.read_csv(DEMOFILE,index_col=0)
+    if PLATFORM == "twitter":
+        if US_ONLY:
+            demos = demos.loc[demos["country"]=="United States"]
+        if IND_ONLY:
+            demos = demos.loc[demos["indorg"]=="ind"]
+    elif PLATFORM == "reddit":
+        if US_ONLY:
+            demos = demos.loc[demos["country_argmax"]=="US"]
+    demo_index = demos.index.map(os.path.abspath).str.replace("/raw/","/processed/")
+    ## Apply Filters
+    predictions = predictions.loc[demo_index]
+    support = support.loc[demo_index]
+    tokens = tokens.loc[demo_index]
+    unique_tokens = unique_tokens.loc[demo_index]
 
 ## Data Caching
 if CACHE_CONCATENATION:
