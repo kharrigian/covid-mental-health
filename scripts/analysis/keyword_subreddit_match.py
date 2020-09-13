@@ -7,20 +7,20 @@
 RERUN = False
 
 ## Processed Data Directory
-# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
 
 ## Platform
-# PLATFORM = "reddit"
-PLATFORM = "twitter"
+PLATFORM = "reddit"
+# PLATFORM = "twitter"
 
 ## Random Sampling
 SAMPLE_RATE = 1
@@ -37,7 +37,7 @@ COVID_START = "2020-02-01"
 
 ## Analysis
 RUN_KEYWORD_ANALYSIS = True
-INCLUDE_HASHTAGS = True
+INCLUDE_HASHTAGS = False
 INCLUDE_MENTIONS = False
 FILTER_US = True
 FILTER_IND = True
