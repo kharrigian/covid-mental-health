@@ -7,25 +7,25 @@
 RERUN = False
 
 ## Processed Data Directory
-DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 
 ## Plot Directory
-PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
-# PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
+# PLOT_DIR = "./plots/reddit/2017-2020/keywords-subreddits/"
+PLOT_DIR = "./plots/twitter/2018-2020/keywords/"
 
 ## Cache Directory
-CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
-# CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+# CACHE_DIR = "./data/results/reddit/2017-2020/keywords-subreddits/"
+CACHE_DIR = "./data/results/twitter/2018-2020/keywords/"
+
+## Platform
+# PLATFORM = "reddit"
+PLATFORM = "twitter"
 
 ## Random Sampling
 SAMPLE_RATE = 1
 PMI_SAMPLE_RATE = 1
 SAMPLE_SEED = 42
-
-## Platform
-PLATFORM = "reddit"
-# PLATFORM = "twitter"
 
 ## Language Date Boundaries
 START_DATE = "2019-01-01"
@@ -39,9 +39,11 @@ COVID_START = "2020-02-01"
 RUN_KEYWORD_ANALYSIS = True
 INCLUDE_HASHTAGS = True
 INCLUDE_MENTIONS = False
+FILTER_US = True
+FILTER_IND = True
 
 ## Multiprocessing
-NUM_JOBS = 4
+NUM_JOBS = 8
 
 ###################
 ### Imports
@@ -107,6 +109,14 @@ DATE_RES = "day"
 
 ## Special Characters
 SPECIAL = "“”…‘’´"
+
+## Demographic Files
+DEMO_FILES = {
+    "./data/processed/twitter/2013-2014/timelines/":"./data/processed/twitter/2013-2014/demographics.csv",
+    "./data/processed/twitter/2016/timelines/":"./data/processed/twitter/2016/demographics.csv",
+    "./data/processed/twitter/2018-2020/timelines/":"./data/processed/twitter/2018-2020/demographics.csv",
+    "./data/processed/reddit/2017-2020/histories/":"./data/processed/reddit/2017-2020/geolocation.csv"
+}
 
 ###################
 ### Helpers
@@ -927,7 +937,7 @@ def keyword_analysis(matches,
     ## Plot Top Match Frequencies
     _ = plot_top_matches(term_identifiers, term_maps, term_breakdowns)
     ## Generate Summary Plots
-    _ = generate_summary_plots(posts_per_day, term_time_df, term_identifiers, min_matches=150)
+    _ = generate_summary_plots(posts_per_day, term_time_df, term_identifiers, min_matches=30)
 
 def learn_vocabulary(filenames,
                      date_boundaries,
@@ -1300,7 +1310,7 @@ with open(COVID_SUBREDDIT_FILE,"r") as the_file:
 
 ## Create Match Dictionary (Subreddit Lists + Term Regular Expressions)
 MATCH_DICT = {
-    "mental_health":{
+    "smhd":{
         "terms":create_regex_dict(MH_TERMS["terms"]["smhd"], INCLUDE_HASHTAGS),
         "subreddits":set(MH_SUBREDDITS["all"]) if PLATFORM == "reddit" else set(),
         "name":"SMHD"
@@ -1310,7 +1320,7 @@ MATCH_DICT = {
         "subreddits":set(),
         "name":"JHU Crisis"
     },
-    "mental_health_keywords":{
+    "clsp_mental_health":{
         "terms":create_regex_dict(MH_KEYWORDS, INCLUDE_HASHTAGS),
         "subreddits":set(),
         "name":"JHU CLSP"
@@ -1324,6 +1334,24 @@ MATCH_DICT = {
 
 ## Find Procesed Files
 filenames = sorted(glob(f"{DATA_DIR}*.json.gz"))
+
+## Filter Files by Demographics
+if PLATFORM == "twitter":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country"] == "United States"]
+    if FILTER_IND:
+        demos = demos.loc[demos["indorg"] == "ind"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    filenames = [f for f in filenames if os.path.abspath(f) in demo_ind]
+elif PLATFORM == "reddit":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),
+                        usecols=list(range(7)),
+                        index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country_argmax"]=="US"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    filenames = [f for f in filenames if os.path.abspath(f) in demo_ind]
 
 ## Find or Load Matches
 match_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches.joblib"
@@ -1364,6 +1392,7 @@ DATE_BOUNDARIES = [START_DATE, COVID_START, END_DATE]
 CONTEXT_WINDOW = None
 PMI_ALPHA = 0.001
 PMI_MIN_SUPPORT = 30
+PMI_COMPARE_MIN_TOK_FREQ = 5
 
 ## Get Date Range
 date_range, date_range_map = get_date_range()
@@ -1451,10 +1480,10 @@ for tl, terms in tqdm(context_analysis_terms.items(), total=len(context_analysis
     for query_term in tqdm(terms, total=len(terms), position=1, leave=False, file=sys.stdout):
         try:
             fig = plot_context_change(query_term,
-                                    term_list=tl,
-                                    pmi_dict=pmi,
-                                    min_tok_freq=10,
-                                    top_k=20)
+                                      term_list=tl,
+                                      pmi_dict=pmi,
+                                      min_tok_freq=PMI_COMPARE_MIN_TOK_FREQ,
+                                      top_k=20)
             qtclean = query_term.replace("/","-").replace(".","-")
             fig.savefig(f"{PLOT_DIR}context/{PLATFORM}_{tl}-{qtclean}.png", dpi=300)
             plt.close(fig)
