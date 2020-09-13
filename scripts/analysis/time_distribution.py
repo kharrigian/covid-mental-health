@@ -1,7 +1,4 @@
 
-## Timestamp Resolution
-DATE_RES = "day"
-
 ## Platform
 PLATFORM = "twitter"
 # PLATFORM = "reddit"
@@ -14,10 +11,12 @@ PLOT_DIR = "./plots/twitter/2018-2020/timelines/"
 
 ## Date Boundaries
 START_DATE = "2019-01-01"
-END_DATE = "2020-06-15"
+END_DATE = "2020-05-31"
 
 ## Parameters
 IGNORE_RETWEETS = True
+FILTER_US = True
+FILTER_IND = True
 
 ## Multiprocessing
 NUM_JOBS = 8
@@ -50,11 +49,22 @@ from pandas.plotting import register_matplotlib_converters
 ### Globals
 ###################
 
+## Timestamp Resolution
+DATE_RES = "month"
+
 ## Logging
 LOGGER = initialize_logger()
 
 ## Timestamp Formatting in Plots
 _ = register_matplotlib_converters()
+
+## Demographic Files
+DEMO_FILES = {
+    "./data/processed/twitter/2013-2014/timelines/":"./data/processed/twitter/2013-2014/demographics.csv",
+    "./data/processed/twitter/2016/timelines/":"./data/processed/twitter/2016/demographics.csv",
+    "./data/processed/twitter/2018-2020/timelines/":"./data/processed/twitter/2018-2020/demographics.csv",
+    "./data/processed/reddit/2017-2020/histories/":"./data/processed/reddit/2017-2020/geolocation.csv"
+}
 
 ###################
 ### Helpers
@@ -94,7 +104,7 @@ def count_timestamps(filename,
     timestamps = []
     with gzip.open(filename, "r") as the_file:
         for comment in json.load(the_file):
-            if IGNORE_RETWEETS and comment["text"].startswith("RT"):
+            if IGNORE_RETWEETS and comment["text"].startswith("RT") or " RT " in comment["text"]:
                 continue
             timestamps.append(comment["created_utc"])
     ## Format Timestamps
@@ -170,8 +180,29 @@ date_range_simple = format_timestamps(date_range, DATE_RES)
 date_range_simple = sorted(set(format_timestamps(date_range, DATE_RES)))
 date_range_map = dict(zip(date_range_simple, range(len(date_range_simple))))
 
+## Get Files
+filenames = glob(f"{DATA_DIR}*.json.gz")
+
+## Filter Files by Demographics
+if PLATFORM == "twitter":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country"] == "United States"]
+    if FILTER_IND:
+        demos = demos.loc[demos["indorg"] == "ind"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    filenames = [f for f in filenames if os.path.abspath(f) in demo_ind]
+elif PLATFORM == "reddit":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),
+                        usecols=list(range(7)),
+                        index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country_argmax"]=="US"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    filenames = [f for f in filenames if os.path.abspath(f) in demo_ind]
+
 ## Count Timestamps
-filenames, tau = load_timestamp_distribution(glob(f"{DATA_DIR}*.json.gz"), date_range_map, DATE_RES)
+filenames, tau = load_timestamp_distribution(filenames, date_range_map, DATE_RES)
 
 ## Format Array
 tau = tau.toarray()
