@@ -4,17 +4,22 @@
 ############################
 
 ## Metadata
-PLATFORM = "reddit"
+PLATFORM = "twitter"
 CONDITION = "depression"
+DATASET = "multitask"
+YEAR_RANGE = "2018-2020"
 
 ## Analysis Paramters
 K_EXTREME = 10
-DISPLAY_TOP = 5
+DISPLAY_TOP = 10
 RANK_BY_ABLATION = True
 
 ## Filtering Parameters
 MIN_POSTS_PER_WINDOW = 10
 MIN_TOKENS_PER_WINDOW = 25
+FILTER_US = True
+FILTER_IND = True
+DATE_FREQ = 5
 
 ## Groups (Target Probabilities to Showcase)
 GROUPS = {
@@ -54,20 +59,35 @@ LOGGER = initialize_logger()
 
 ## Result Directories
 RESULTS_DIRS = {
-    "reddit":"./data/results/reddit/2017-2020/inference/monthly-weekly_step/",
-    "twitter":"./data/results/twitter/2018-2020/inference/monthly-weekly_step/"
+    ("2017-2020","reddit","smhd"):"./data/results/reddit/2017-2020/inference/monthly-weekly_step/",
+    ("2013-2014","twitter","multitask"):"./data/results/twitter/2013-2014/inference/monthly-weekly_step/",
+    ("2013-2014","twitter","clpsych"):"./data/results/twitter/2013-2014/inference/monthly-weekly_step-clpsych/",
+    ("2016","twitter","multitask"):"./data/results/twitter/2016/inference/monthly-weekly_step/",
+    ("2016","twitter","clpsych"):"./data/results/twitter/2016/inference/monthly-weekly_step-clpsych/",
+    ("2018-2020","twitter","multitask"):"./data/results/twitter/2018-2020/inference/monthly-weekly_step/",
+    ("2018-2020","twitter","clpsych"):"./data/results/twitter/2018-2020/inference/monthly-weekly_step-clpsych/"
 }
-RESULTS_DIR = RESULTS_DIRS.get(PLATFORM)
+RESULTS_DIR = RESULTS_DIRS.get((YEAR_RANGE, PLATFORM, DATASET))
 
 ## Models
 MODEL_PATHS = {
-    ("reddit","anxiety"):"../mental-health/models/falconet_v2/20200824135147-SMHD-Anxiety/model.joblib",
-    ("reddit","depression"):"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
-    ("twitter","anxiety"):"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib",
-    ("twitter","depression"):"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib"
+    ("reddit","anxiety","smhd"):"../mental-health/models/falconet_v2/20200824135147-SMHD-Anxiety/model.joblib",
+    ("reddit","depression","smhd"):"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
+    ("twitter","anxiety","multitask"):"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib",
+    ("twitter","depression","multitask"):"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib",
+    ("twitter","depression","clpsych"):"../mental-health/models/falconet_v2/20200912132424-CLPsych-Depression/model.joblib"
 }
 LOGGER.info("Loading Model")
-MODEL = joblib.load(MODEL_PATHS.get((PLATFORM,CONDITION)))
+MODEL = joblib.load(MODEL_PATHS.get((PLATFORM,CONDITION,DATASET)))
+
+## Demographic Files
+DEMO_FILES = {
+    ("2013-2014","twitter"):"./data/processed/twitter/2013-2014/demographics.csv",
+    ("2016","twitter"):"./data/processed/twitter/2016/demographics.csv",
+    ("2018-2020","twitter"):"./data/processed/twitter/2018-2020/demographics.csv",
+    ("2017-2020","reddit"):"./data/processed/reddit/2017-2020/geolocation.csv"
+}
+DEMO_FILE = DEMO_FILES.get((YEAR_RANGE, PLATFORM))
 
 ############################
 ### Helpers
@@ -264,6 +284,31 @@ support = pd.DataFrame(support)
 tokens = pd.DataFrame(tokens)
 unique_tokens = pd.DataFrame(unique_tokens)
 
+## Load Appropriate Demographics
+demo_ind = None
+if PLATFORM == "twitter":
+    demos = pd.read_csv(DEMO_FILE,index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country"] == "United States"]
+    if FILTER_IND:
+        demos = demos.loc[demos["indorg"] == "ind"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+elif PLATFORM == "reddit":
+    demos = pd.read_csv(DEMO_FILE,
+                        usecols=list(range(7)),
+                        index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country_argmax"]=="US"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+
+## Apply Demographic Filter
+if demo_ind:
+    demo_ind = [d for d in predictions.index if d in demo_ind]
+    predictions = predictions.loc[demo_ind]
+    support = support.loc[demo_ind]
+    tokens = tokens.loc[demo_ind]
+    unique_tokens = unique_tokens.loc[demo_ind]
+
 ## Date Filtering
 LOGGER.info("Filtering Out Abnormal Dates")
 dates = pd.to_datetime(predictions.columns)
@@ -294,11 +339,11 @@ for thresh, df in zip([MIN_POSTS_PER_WINDOW, MIN_TOKENS_PER_WINDOW],
 ### Identify Extreme Candidates
 ############################
 
-## Choose Dates
-analysis_dates = ["2019-01-28",'2019-04-15','2019-12-30','2020-04-20','2020-06-15']
+## Get Date Range
+DATE_RANGE = [c for i, c in enumerate(predictions_filtered.columns) if i % DATE_FREQ == 0]
 
 ## Get Extremes
-for ad in analysis_dates:
+for ad in DATE_RANGE:
     _ = get_extremes(predictions=predictions_filtered,
                      date=ad,
                      date_ranges=date_ranges,
