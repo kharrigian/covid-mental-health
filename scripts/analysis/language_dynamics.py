@@ -4,10 +4,12 @@
 #####################
 
 ## Location of Data
+PLATFORM = "reddit"
 DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
 CACHE_DIR = "./data/processed/reddit/2017-2020/language_dynamics/"
 PLOT_DIR = "./plots/reddit/2017-2020/language_dynamics/"
 
+# PLATFORM = "twitter"
 # DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
 # CACHE_DIR = "./data/processed/twitter/2018-2020/language_dynamics/"
 # PLOT_DIR = "./plots/twitter/2018-2020/language_dynamics/"
@@ -24,6 +26,9 @@ REFERENCE_MODELS = {
 #             "depression":"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib",
 #             "anxiety":"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib"
 # }
+# REFERENCE_MODELS = {
+#             "depression":"../mental-health/models/falconet_v2/20200912132424-CLPsych-Depression/model.joblib",
+# }
 
 ## Date Boundaries
 DATE_START = "2019-01-01"
@@ -35,6 +40,8 @@ COVID_START = "2020-02-01"
 NUM_PROCESSES = 8
 RANDOM_STATE = 42
 CHUNKSIZE = 30
+FILTER_US = True
+FILTER_IND = True
 
 #####################
 ### Imports
@@ -73,6 +80,14 @@ from mhlib.util.logging import initialize_logger
 
 ## Logger
 LOGGER = initialize_logger()
+
+## Demographic Files
+DEMO_FILES = {
+    "./data/processed/twitter/2013-2014/timelines/":"./data/processed/twitter/2013-2014/demographics.csv",
+    "./data/processed/twitter/2016/timelines/":"./data/processed/twitter/2016/demographics.csv",
+    "./data/processed/twitter/2018-2020/timelines/":"./data/processed/twitter/2018-2020/demographics.csv",
+    "./data/processed/reddit/2017-2020/histories/":"./data/processed/reddit/2017-2020/geolocation.csv"
+}
 
 ## Cache/Plot Directories
 for d in [PLOT_DIR, CACHE_DIR]:
@@ -140,6 +155,24 @@ def get_quadrant(x, y):
 
 ## Processed Data Files
 processed_files = sorted(glob(f"{DATA_DIR}*.json.gz"))
+
+## Filter Files by Demographics
+if PLATFORM == "twitter":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country"] == "United States"]
+    if FILTER_IND:
+        demos = demos.loc[demos["indorg"] == "ind"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    processed_files = [f for f in processed_files if os.path.abspath(f) in demo_ind]
+elif PLATFORM == "reddit":
+    demos = pd.read_csv(DEMO_FILES.get(DATA_DIR),
+                        usecols=list(range(7)),
+                        index_col=0)
+    if FILTER_US:
+        demos = demos.loc[demos["country_argmax"]=="US"]
+    demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
+    processed_files = [f for f in processed_files if os.path.abspath(f) in demo_ind]
 
 ## Learn/Load Vocabulary
 vocab_cache_file = "{}vocab_ngram{}-{}_{}_{}.joblib".format(CACHE_DIR, NGRAMS[0], NGRAMS[1], DATE_START, DATE_END)
