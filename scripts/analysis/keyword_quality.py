@@ -52,17 +52,43 @@ PRINTER = PrettyPrinter(width=80)
 ### Helpers
 ##########################
 
-def load_keyword_search_results(match_cache_file):
+def load_keyword_search_results(match_cache_dir):
     """
 
     """
-    match_data = joblib.load(match_cache_file)
-    filenames = match_data.get("filenames")
-    matches = match_data.get("matches")
-    n = match_data.get("n")
-    n_seen = match_data.get("n_seen")
-    timestamps = match_data.get("timestamps")
+    ## Load Keyword Search Results
+    filenames = []
+    matches = []
+    n = []
+    n_seen = []
+    timestamps = []
+    ## Load Matches
+    match_files = glob(f"{match_cache_dir}*.joblib")
+    for match_file in tqdm(match_files, desc="Filename"):
+        match_data = joblib.load(match_file)
+        filenames.append(match_data.get("filename"))
+        matches.append(match_data.get("matches"))
+        n.append(match_data.get("n"))
+        n_seen.append(match_data.get("n_seen"))
+        timestamps.append(match_data.get("timestamps"))
+    n = np.array(n)
+    n_seen = np.array(n_seen)
     return filenames, matches, n, n_seen, timestamps
+
+def get_unique_terms(matches):
+    """
+
+    """
+    terms = {}
+    for m in flatten(matches):
+        for match_key, match_dict in m.get("matches").items():
+            if "terms" not in match_dict:
+                continue
+            if match_key not in terms:
+                terms[match_key] = set()
+            for (term, _, _) in match_dict.get("terms"):
+                terms[match_key].add(term)
+    return terms
 
 def examine_matches(matches,
                     match_key,
@@ -110,46 +136,6 @@ def label_row_indication_strength(row):
     return (term, row["tweet_id"], label_str)
 
 ###################
-### Load Resources
-###################
-
-## Load Georgetown Mental Health Resources (SMHD)
-MH_TERM_FILE = "./data/resources/mental_health_terms.json"
-with open(MH_TERM_FILE,"r") as the_file:
-    MH_TERMS = json.load(the_file)
-
-## Load Crisis Keywords (JHU Behavioral Health)
-CRISIS_KEYWORD_FILES = glob("./data/resources/*crisis*.keywords")
-CRISIS_KEYWORDS = set()
-for f in CRISIS_KEYWORD_FILES:
-    fwords = [i.strip() for i in open(f,"r").readlines()]
-    fwords = list(map(lambda i: i.lower() if not i.isupper() else i, fwords))
-    CRISIS_KEYWORDS.update(fwords)
-
-## Load JHU CLSP Mental Health Keywords
-MH_KEYWORDS_FILE = "./data/resources/mental_health_keywords_manual_selection.csv"
-MH_KEYWORDS = pd.read_csv(MH_KEYWORDS_FILE)
-MH_KEYWORDS = set(MH_KEYWORDS.loc[MH_KEYWORDS["ignore_level"].isnull()]["ngram"])
-MH_KEYWORDS.add("depression")
-MH_KEYWORDS.add("depressed")
-
-## Create Match Dictionary (Subreddit Lists + Term Regular Expressions)
-MATCH_DICT = {
-    "mental_health":{
-        "terms":MH_TERMS["terms"]["smhd"],
-        "name":"SMHD"
-    },
-    "crisis":{
-        "terms":CRISIS_KEYWORDS,
-        "name":"JHU Crisis"
-    },
-    "mental_health_keywords":{
-        "terms":MH_KEYWORDS,
-        "name":"JHU CLSP"
-    },
-}
-
-###################
 ### Load/Parse Matches
 ###################
 
@@ -160,17 +146,19 @@ sample_cache_file = f"{CACHE_DIR}{PLATFORM}_keyword_samples_k-{NUM_SAMPLES_PER_T
 if not os.path.exists(sample_cache_file):
 
     ## Load Matches
-    match_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches.joblib"
-    filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_file)
+    match_cache_dir = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches/"
+    filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_dir)
 
     ## Unique Query Terms
-    unique_terms = [[(group, term) for term in d.get("terms")] for group, d in MATCH_DICT.items()]
-    unique_terms = [item for sublist in unique_terms for item in sublist]
-    unique_terms = pd.DataFrame(unique_terms,columns=["keyword_group","term"])
-    unique_terms = unique_terms.groupby(["term"])["keyword_group"].apply(lambda x: tuple(sorted(x))).to_frame("keyword_group")
-
+    unique_terms = get_unique_terms(matches)
+    unique_terms_df = pd.DataFrame(data=sorted(set(flatten(unique_terms.values()))),
+                                   columns=["term"])
+    unique_terms_df["keyword_group"] = [[]] * len(unique_terms_df)
+    for term_group, terms in unique_terms.items():
+        unique_terms_df["keyword_group"] = unique_terms_df.apply(lambda row: [term_group] + row["keyword_group"] if row["term"] in terms else row["keyword_group"], axis=1)
+        
     ## Get Match Sizes
-    match_sizes = {term:0 for term in unique_terms.index}
+    match_sizes = {term:0 for term in unique_terms_df["term"]}
     for match_set in matches:
         for post in match_set:
             for match_key, match_values in post.get("matches").items():
@@ -181,14 +169,13 @@ if not os.path.exists(sample_cache_file):
                     if t not in match_sizes:
                         continue
                     match_sizes[t] += 1
-    unique_terms["num_matches"] = unique_terms.index.map(lambda i: match_sizes.get(i))
+    unique_terms_df["num_matches"] = unique_terms_df["term"].map(lambda i: match_sizes.get(i))
 
     ## Sample Matches (Leverage Temporal Distribution)
     samples = []
     np.random.seed(RANDOM_STATE)
-    available = unique_terms.loc[unique_terms["num_matches"] > 0]
-    for term, term_data in tqdm(available.iterrows(), total=len(available), desc="Term Sampling"):
-        term_matches = pd.DataFrame(examine_matches(matches, term_data.loc["keyword_group"][0], "terms", term))
+    for _, term_data in tqdm(unique_terms_df.iterrows(), total=len(unique_terms_df), desc="Term Sampling"):
+        term_matches = pd.DataFrame(examine_matches(matches, term_data.loc["keyword_group"][0], "terms", term_data.loc["term"]))
         term_matches["month"] = term_matches["created_utc"].map(datetime.fromtimestamp).map(lambda i: (i.year, i.month))
         month_dist = term_matches["month"].value_counts(normalize=True)
         term_matches["sample_prob"] = (month_dist.loc[term_matches.month]).values
@@ -196,7 +183,7 @@ if not os.path.exists(sample_cache_file):
         term_matches_sample_simple = []
         for _,sample in term_matches_sample.iterrows():
             sample_simple = {
-                        "term":term,
+                        "term":term_data.loc["term"],
                         "text":sample.loc["text"],
                         "date":datetime.fromtimestamp(sample.loc["created_utc"]).date(),
                         "user_id_str":sample.loc["user_id_str"],
@@ -211,6 +198,10 @@ if not os.path.exists(sample_cache_file):
             sample["date"] = sample["date"].isoformat()
             the_file.write("{}\n".format(json.dumps(sample)))
 
+    ## Cache Metadata
+    unique_terms_df["keyword_group"]= unique_terms_df["keyword_group"].map(lambda i: ", ".join(i))
+    unique_terms_df.to_csv(f"{CACHE_DIR}{PLATFORM}_keyword_samples_metadata.csv", index=False)
+
 ## Load Existing Samples if Already Complete
 else:
 
@@ -219,6 +210,10 @@ else:
     with open(sample_cache_file, "r") as the_file:
         for sample in the_file:
             samples.append(json.loads(sample))
+    
+    ## Load Metadata From Cache
+    unique_terms_df = pd.read_csv(f"{CACHE_DIR}{PLATFORM}_keyword_samples_metadata.csv")
+    unique_terms_df["keyword_group"] = unique_terms_df["keyword_group"].str.split(", ")
 
 ## Format Samples
 samples = pd.DataFrame(samples)
