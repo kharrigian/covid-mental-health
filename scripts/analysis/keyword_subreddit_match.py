@@ -36,9 +36,7 @@ ANALYSIS_START = "2019-01-01"
 COVID_START = "2020-02-01"
 
 ## Analysis
-RUN_KEYWORD_ANALYSIS = True
-INCLUDE_HASHTAGS = False
-INCLUDE_MENTIONS = False
+RUN_KEYWORD_ANALYSIS = False
 FILTER_US = True
 FILTER_IND = True
 
@@ -117,6 +115,9 @@ DEMO_FILES = {
     "./data/processed/twitter/2018-2020/timelines/":"./data/processed/twitter/2018-2020/demographics.csv",
     "./data/processed/reddit/2017-2020/histories/":"./data/processed/reddit/2017-2020/geolocation.csv"
 }
+
+INCLUDE_HASHTAGS = True if PLATFORM == "twitter" else False
+INCLUDE_MENTIONS = False
 
 ###################
 ### Helpers
@@ -367,16 +368,27 @@ def search_files(filenames,
     timestamps = [r[4] for r in res]
     return filenames, matches, n, n_seen, timestamps
 
-def load_keyword_search_results(match_cache_file):
+def load_keyword_search_results(match_cache_dir):
     """
 
     """
-    match_data = joblib.load(match_cache_file)
-    filenames = match_data.get("filenames")
-    matches = match_data.get("matches")
-    n = match_data.get("n")
-    n_seen = match_data.get("n_seen")
-    timestamps = match_data.get("timestamps")
+    ## Load Keyword Search Results
+    filenames = []
+    matches = []
+    n = []
+    n_seen = []
+    timestamps = []
+    ## Load Matches
+    match_files = glob(f"{match_cache_dir}*.joblib")
+    for match_file in tqdm(match_files, desc="Filename", file=sys.stdout):
+        match_data = joblib.load(match_file)
+        filenames.append(match_data.get("filename"))
+        matches.append(match_data.get("matches"))
+        n.append(match_data.get("n"))
+        n_seen.append(match_data.get("n_seen"))
+        timestamps.append(match_data.get("timestamps"))
+    n = np.array(n)
+    n_seen = np.array(n_seen)
     return filenames, matches, n, n_seen, timestamps
 
 def examine_matches(matches,
@@ -1353,24 +1365,39 @@ elif PLATFORM == "reddit":
     demo_ind = set(demos.index.map(os.path.abspath).str.replace("/raw/","/processed/"))
     filenames = [f for f in filenames if os.path.abspath(f) in demo_ind]
 
-## Find or Load Matches
-match_cache_file = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches.joblib"
-if not os.path.exists(match_cache_file) or RERUN:
+## Establish Cache
+match_cache_dir = f"{CACHE_DIR}{PLATFORM}_{START_DATE}_{END_DATE}_matches/"
+if not os.path.exists(match_cache_dir):
+    _ = os.makedirs(match_cache_dir)
+completed_matches = set(glob(f"{match_cache_dir}*.joblib"))
+
+## Identify Unmatched Files
+filenames_to_run = []
+for f in filenames:
+    f_completed = "{}{}".format(match_cache_dir, os.path.basename(f).replace(".json.gz",".joblib"))
+    if f_completed not in completed_matches or RERUN:
+        filenames_to_run.append(f)
+
+## Run Keyword Search or Load Existing Results
+if len(filenames_to_run) > 0:
     LOGGER.info("Starting Keyword Search")
     ## Search For Keyword/Subreddit Matches
-    filenames, matches, n, n_seen, timestamps = search_files(filenames,
+    filenames, matches, n, n_seen, timestamps = search_files(filenames_to_run,
                                                              date_res=DATE_RES,
                                                              include_mentions=INCLUDE_MENTIONS)
     ## Cache
-    _ = joblib.dump({"filenames":filenames,
-                     "matches":matches,
-                     "n":n,
-                     "n_seen":n_seen,
-                     "timestamps":timestamps}, match_cache_file)
+    LOGGER.info("Search Complete. Caching Matches.")
+    for fn, mt, n_, ns_, ts in tqdm(zip(filenames, matches, n, n_seen, timestamps),
+                                    total=len(filenames),
+                                    desc="Caching Keyword Matches",
+                                    file=sys.stdout):
+        fn_id = os.path.basename(fn).replace(".json.gz","")
+        fn_out = f"{match_cache_dir}{fn_id}.joblib"
+        _ = joblib.dump({"filename":fn, "matches":mt, "n":n_, "n_seen":ns_, "timestamps":ts}, fn_out)
 else:
+    ## Load Existing Cache
     LOGGER.info("Loading Keyword Search Results")
-    ## Load Existing Matches and Relevant Filenames
-    filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_file)
+    filenames, matches, n, n_seen, timestamps = load_keyword_search_results(match_cache_dir)
 
 ###################
 ### Keyword Analysis
@@ -1405,7 +1432,7 @@ if not os.path.exists(vocab_cache_file) or RERUN:
                            date_boundaries=DATE_BOUNDARIES,
                            prune=True,
                            prune_freq=25, ## Chunksize of 50 -> Prune Every 25 * 50 = 1250 files
-                           prune_min_count=None, ## Rely on Vocabulary Params if None
+                           prune_min_count=10, ## Rely on Vocabulary Params if None
                            prune_max_count=None, ## Rely on Vocabulary Params if None
                            prune_trim_rule=None ## Designate Special Trum Rule if Desired (Word, Count, Min Count, Max Count)
                            )
