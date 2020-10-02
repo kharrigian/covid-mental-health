@@ -20,8 +20,9 @@ DRY_RUN=False
 ## Pipeline Configuration
 DATA_TYPE="twitter"
 INPUT_FOLDER="/export/c12/mdredze/twitter/public/"
-OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet-full/"
-CONFIG="/export/fs03/a08/kharrigian/lab-resources/falconet/pipelines/mental_health/all.json"
+OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet-keywords/"
+CONFIG="/export/fs03/a08/kharrigian/lab-resources/falconet/pipelines/mental_health/keywords.json"
+LOG_DIR="/home/kharrigian/gridlogs/python/covid/falconet/"
 
 ## Processing Parameters
 MEMORY=32
@@ -99,8 +100,8 @@ def get_header(NFILES,
     #$ -m eas
     #$ -N {OUTPUT_PREFIX}
     #$ -t 1-{NFILES}
-    #$ -e /home/kharrigian/gridlogs/python/covid_falconet_mental_health/
-    #$ -o /home/kharrigian/gridlogs/python/covid_falconet_mental_health/
+    #$ -e {LOG_DIR}
+    #$ -o {LOG_DIR}
     #$ -pe smp {NJOBS}
     #$ -l 'gpu=0,mem_free={MEMORY}g,ram_free={MEMORY}g'
     """
@@ -252,9 +253,11 @@ def main():
     ## Dry Run -- Exit Early
     if DRY_RUN:
         exit()
-    ## Setup Temporary Folders
+    ## Setup Temporary Folders and Logging Output
     if not os.path.exists(TEMP_DIR):
         _ = os.makedirs(TEMP_DIR)
+    if not os.path.exists(LOG_DIR):
+        _ = os.makedirs(LOG_DIR)
     if PARALLEL and not os.path.exists(f"{TEMP_DIR}filenames/"):
         _ = os.makedirs(f"{TEMP_DIR}filenames/")
     ## Save Data Filenames to Individual Files for Parallel Processing
