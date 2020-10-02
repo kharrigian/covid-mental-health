@@ -133,7 +133,7 @@ def label_row_indication_strength(row):
     label_opt_str = "Label Selection:\n[1] No Indication\n[2] Possible Indication\n[3] Strong Indication"
     print(print_str); print(label_opt_str)
     label_str = int(input("Label Selection: "))
-    return (term, row["tweet_id"], label_str)
+    return (term, row["post_id"], label_str)
 
 ###################
 ### Load/Parse Matches
@@ -187,7 +187,7 @@ if not os.path.exists(sample_cache_file):
                         "text":sample.loc["text"],
                         "date":datetime.fromtimestamp(sample.loc["created_utc"]).date(),
                         "user_id_str":sample.loc["user_id_str"],
-                        "tweet_id":sample.loc["tweet_id"]
+                        "post_id":sample.loc["tweet_id"] if PLATFORM == "twitter" else sample.loc["comment_id"]
             }
             term_matches_sample_simple.append(sample_simple)
         samples.extend(term_matches_sample_simple)
@@ -237,18 +237,18 @@ for _, sample_row in samples.iterrows():
     if sample_row["term"] not in indicator_annotations:
         indicator_annotations[sample_row["term"]] = {}
         need_to_label = True
-    if sample_row["tweet_id"] not in indicator_annotations[sample_row["term"]]:
+    if sample_row["post_id"] not in indicator_annotations[sample_row["term"]]:
         need_to_label = True
     if need_to_label:
-        term, tweet_id, lbl = label_row_indication_strength(sample_row)
-        indicator_annotations[term][tweet_id] = lbl
+        term, post_id, lbl = label_row_indication_strength(sample_row)
+        indicator_annotations[term][post_id] = lbl
         if term != last_seen_term:
             with open(indicator_annotation_file, "w") as the_file:
                 json.dump(indicator_annotations, the_file)
             last_seen_term = term
 
 ## Merge Annotations With Samples
-samples["label"] = samples.apply(lambda row: indicator_annotations.get(row["term"]).get(row["tweet_id"]) \
+samples["label"] = samples.apply(lambda row: indicator_annotations.get(row["term"]).get(row["post_id"]) \
                                  if indicator_annotations.get(row["term"]) is not None else None, axis=1)
 
 ###################
