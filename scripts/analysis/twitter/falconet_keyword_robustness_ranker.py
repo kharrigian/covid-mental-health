@@ -28,15 +28,19 @@ PLOT_DIR = "./plots/twitter/2018-2020/keywords/robustness/"
 
 ## Context Analysis Parameters
 CONTEXT_WINDOW = None
-NGRAMS=(1,1)
-MIN_FREQ=30
-MIN_CONTEXT_FREQ=10
+NGRAMS = (1,2)
+MIN_FREQ = 5
+MIN_CONTEXT_FREQ = 5
+VOCAB_CUTOFF = 3
+VOCAB_SIZE = 250000
 SMOOTHING = 0.01
+SMOOTHING_WINDOW = 14
 PRE_COVID_WINDOW = ["2019-03-19","2019-08-01"]
 POST_COVID_WINDOW = ["2020-03-19","2020-08-01"]
 
 ## Meta Parameters
 NUM_JOBS = 8
+RERUN = False
 
 #######################
 ### Imports
@@ -49,16 +53,17 @@ import sys
 import gzip
 import json
 import string
+import textwrap
 from glob import glob
 from datetime import datetime
 from dateutil.parser import parse
 from collections import Counter
 from multiprocessing import Pool
 from functools import partial
-import textwrap
 
 ## External Libraries
 import demoji
+import joblib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -85,7 +90,8 @@ for d in [PLOT_DIR, CACHE_DIR]:
         _ = os.makedirs(d)
 
 ## Tokenizer
-TOKENIZER = Tokenizer(keep_case=False,
+TOKENIZER = Tokenizer(stopwords=set(),
+                      keep_case=False,
                       negate_handling=False,
                       negate_token=False,
                       keep_punctuation=False,
@@ -95,40 +101,38 @@ TOKENIZER = Tokenizer(keep_case=False,
                       keep_pronouns=True,
                       keep_url=False,
                       keep_hashtags=True,
-                      keep_retweets=True,
-                      emoji_handling=None,
+                      keep_retweets=False,
+                      emoji_handling="strip",
                       strip_hashtag=False)
 
 ## Regex Rules
 SPECIAL = "“”…‘’´"
 INCLUDE_HASHTAGS = True
-INCLUDE_MENTIONS = False
 
-## Coronavirus Keywords
-coronavirus_keyword_file = "./data/resources/falconet/corona_virus.keywords"
-coronavirus_keywords = list(map(lambda i: i.strip(), open(coronavirus_keyword_file,"r").readlines()))
-coronavirus_keywords = sorted(set(flatten([[i, i.lower()] for i in coronavirus_keywords])))
+#######################
+### Reference Keywords
+#######################
 
-## Mental Health Keywords
-mental_health_keywords = {}
+## Mental Health/Coronavirus Keywords
+falconet_keywords = {}
+falconet_keyword_dir="./data/resources/falconet/"
 for mhlist, mhfile in [("Crisis (Level 1)", "crisis_level1.keywords"),
                        ("Crisis (Level 2)", "crisis_level2.keywords"),
                        ("Crisis (Level 3)", "crisis_level3.keywords"),
                        ("SMHD", "smhd.keywords"),
-                       ("CLSP", "pmi.keywords")]:
-    mhkeys = list(map(lambda i: i.strip(), open(f"./data/resources/falconet/{mhfile}","r").readlines()))
+                       ("CLSP", "pmi.keywords"),
+                       ("Coronavirus", "corona_virus.keywords")]:
+    mhkeys = list(map(lambda i: i.strip(), open(f"{falconet_keyword_dir}{mhfile}","r").readlines()))
     mhkeys = sorted(set(flatten([[i, i.lower()] for i in mhkeys])))
-    mental_health_keywords[mhlist] = mhkeys
-
+    falconet_keywords[mhlist] = mhkeys
 
 ## Reverse Mental Health Keyword List
-mental_health_keywords_reverse = dict()
-for mhlist, terms in mental_health_keywords.items():
+falconet_keywords_reverse = dict()
+for mhlist, terms in falconet_keywords.items():
     for t in terms:
-        if t not in mental_health_keywords_reverse:
-            mental_health_keywords_reverse[t] = []
-        mental_health_keywords_reverse[t].append(mhlist)
-
+        if t not in falconet_keywords_reverse:
+            falconet_keywords_reverse[t] = []
+        falconet_keywords_reverse[t].append(mhlist)
 
 #######################
 ### Helpers
@@ -410,34 +414,47 @@ def replace_emojis(features):
 ### Keyword Identification/Counts
 #######################
 
+LOGGER.info("Counting Keyword Matches")
+
 ## Get Processed Files
 filenames = sorted(glob(f"{DATA_DIR}*_minimal.json.gz"))
 
-## Get Keyword Counts Over Time (Parallel Processing)
-mp = Pool(NUM_JOBS)
-mp_results = list(tqdm(mp.imap_unordered(count_keywords_in_file, filenames),
-                       total=len(filenames),
-                       file=sys.stdout))
-mp.close()
+## Count Cache Files
+keyword_count_cache = f"{CACHE_DIR}keyword_counts.csv"
+post_count_cache = f"{CACHE_DIR}post_counts.csv"
 
-## Parse Keyword Counts
-n_posts = Counter()
-keyword_counts = dict()
-for n, kc in mp_results:
-    n_posts += n
-    for date, date_counts in kc.items():
-        if date not in keyword_counts:
-            keyword_counts[date] = date_counts
-        else:
-            keyword_counts[date] += date_counts
-
-## Format Counts
-n_posts = pd.Series(n_posts).to_frame("count")
-keyword_counts = pd.DataFrame(keyword_counts).T.sort_index()
-keyword_counts = keyword_counts.fillna(0).astype(int)
+## Load Counts
+if (not os.path.exists(keyword_count_cache) and not os.path.exists(post_count_cache)) or RERUN:
+    ## Get Keyword Counts Over Time (Parallel Processing)
+    mp = Pool(NUM_JOBS)
+    mp_results = list(tqdm(mp.imap_unordered(count_keywords_in_file, filenames),
+                        total=len(filenames),
+                        file=sys.stdout))
+    mp.close()
+    ## Parse Keyword Counts
+    n_posts = Counter()
+    keyword_counts = dict()
+    for n, kc in mp_results:
+        n_posts += n
+        for date, date_counts in kc.items():
+            if date not in keyword_counts:
+                keyword_counts[date] = date_counts
+            else:
+                keyword_counts[date] += date_counts
+    ## Format Counts
+    n_posts = pd.Series(n_posts).to_frame("count")
+    keyword_counts = pd.DataFrame(keyword_counts).T.sort_index()
+    keyword_counts = keyword_counts.fillna(0).astype(int)
+    ## Cache
+    n_posts.to_csv(post_count_cache)
+    keyword_counts.to_csv(keyword_count_cache)
+else:
+    ## Load From Cache
+    n_posts = pd.read_csv(post_count_cache, index_col=0)
+    keyword_counts = pd.read_csv(keyword_count_cache, index_col=0)
 
 ## Rolling Statistics
-window_size = 14
+window_size = SMOOTHING_WINDOW
 rolling_keyword_counts = keyword_counts.rolling(window_size,axis=0).sum().iloc[window_size:]
 rolling_n_posts = n_posts["count"].rolling(window_size).sum().iloc[window_size:]
 rolling_keyword_counts_normed = rolling_keyword_counts.apply(lambda x: x / rolling_n_posts,axis=0)
@@ -455,6 +472,8 @@ cv_match_rate = rolling_keyword_counts_normed.std(axis=0) / rolling_keyword_coun
 #######################
 ### Representative Posts
 #######################
+
+LOGGER.info("Identifying Representative Examples")
 
 def get_posts(filename,
               keywords):
@@ -486,56 +505,78 @@ def find_keyword_examples(filenames,
     mp.close()
     ## Sample
     mp_matches = pd.DataFrame(flatten(mp_matches))
-    mp_matches["date"] = mp_matches["date"].map(lambda x: parse(x).date())
-    mp_matches.sort_values("date", inplace=True)
     sample = []
     for keyword in keywords:
         mp_keyword_matches = mp_matches.loc[mp_matches["keyword"]==keyword]
         mp_keyword_matches = mp_keyword_matches.drop_duplicates("text")
-        mp_keyword_matches = mp_keyword_matches.sample(min(n, len(mp_keyword_matches)), random_state=42, replace=False).sort_values("date")
+        mp_keyword_matches = mp_keyword_matches.sample(min(n, len(mp_keyword_matches)),
+                                                       random_state=42,
+                                                       replace=False)
         sample.append(mp_keyword_matches)
     sample = pd.concat(sample).reset_index(drop=True)
     return sample
 
-## Find Representative Posts
-representative_examples = []
-keyword_chunks = list(chunks(keyword_counts.columns.tolist(), 20))
-for keyword_chunk in tqdm(keyword_chunks,position=0,desc="Keyword Chunk",file=sys.stdout):
-    keyword_examples = find_keyword_examples(filenames, keyword_chunk, n=20)
-    representative_examples.append(keyword_examples)
-representative_examples = pd.concat(representative_examples).reset_index(drop=True)
+## Post Cache
+rep_cache_file = f"{CACHE_DIR}representative_examples.json"
+
+## Load Representatives
+if not os.path.exists(rep_cache_file) or RERUN:
+    ## Find Representative Posts
+    representative_examples = []
+    keyword_chunks = list(chunks(keyword_counts.columns.tolist(), 20))
+    for keyword_chunk in tqdm(keyword_chunks,position=0,desc="Keyword Chunk",file=sys.stdout):
+        keyword_examples = find_keyword_examples(filenames, keyword_chunk, n=20)
+        representative_examples.append(keyword_examples)
+    representative_examples = pd.concat(representative_examples).reset_index(drop=True)
+    ## Cache
+    with open(rep_cache_file, "w") as the_file:
+        for _, row in representative_examples.iterrows():
+            the_file.write(row.to_json()+"\n")
+else:
+    ## Load 
+    representative_examples = []
+    with open(rep_cache_file, "r") as the_file:
+        for line in the_file:
+            representative_examples.append(json.loads(line))
+    representative_examples = pd.DataFrame(representative_examples)
 
 #######################
-### Keyword Co-morbidity
+### Keyword Comorbidity
 #######################
 
-## Get Keyword Comorbidity
-mp = Pool(NUM_JOBS)
-mp_results = list(tqdm(mp.imap_unordered(keyword_comorbidity, filenames),
-                       total=len(filenames),
-                       file=sys.stdout))
-mp.close()
+LOGGER.info("Constructing Keyword Comorbidity Matrix")
 
-## Format into Matrix
-comorbidity = np.zeros((keyword_counts.shape[1], keyword_counts.shape[1]))
-keyword2ind = dict(zip(keyword_counts.columns.tolist(), range(keyword_counts.shape[1])))
-for kc, kc_co in mp_results:
-    for _k, _c in kc.items():
-        comorbidity[keyword2ind[_k], keyword2ind[_k]] += _c
-    for _k, _k_co in kc_co.items():
-        for _kc, _co in _k_co.items():
-            comorbidity[keyword2ind[_k], keyword2ind[_kc]] += _co
-comorbidity = comorbidity.astype(int)
+## Comorbidity Cache
+comorbidity_cache = f"{CACHE_DIR}keyword_comorbidity.csv"
 
-## Normalize
-comorbidity_normalized = comorbidity / comorbidity.diagonal().reshape(-1,1)
-
-## Format into DataFrame
-comorbidity = pd.DataFrame(comorbidity, columns=keyword_counts.columns, index=keyword_counts.columns)
-comorbidity_normalized = pd.DataFrame(comorbidity_normalized, columns=keyword_counts.columns, index=keyword_counts.columns)
+## Load Comorbidity Matrix
+if not os.path.exists(comorbidity_cache) or RERUN:
+    ## Get Keyword Comorbidity
+    mp = Pool(NUM_JOBS)
+    mp_results = list(tqdm(mp.imap_unordered(keyword_comorbidity, filenames),
+                        total=len(filenames),
+                        file=sys.stdout))
+    mp.close()
+    ## Format into Matrix
+    comorbidity = np.zeros((keyword_counts.shape[1], keyword_counts.shape[1]))
+    keyword2ind = dict(zip(keyword_counts.columns.tolist(), range(keyword_counts.shape[1])))
+    for kc, kc_co in mp_results:
+        for _k, _c in kc.items():
+            comorbidity[keyword2ind[_k], keyword2ind[_k]] += _c
+        for _k, _k_co in kc_co.items():
+            for _kc, _co in _k_co.items():
+                comorbidity[keyword2ind[_k], keyword2ind[_kc]] += _co
+    comorbidity = comorbidity.astype(int)
+    ## Format into DataFrame
+    comorbidity = pd.DataFrame(comorbidity, columns=keyword_counts.columns, index=keyword_counts.columns)
+    ## Cache
+    comorbidity.to_csv(comorbidity_cache)    
+else:
+    ## Load from Cache
+    comorbidity = pd.read_csv(comorbidity_cache,index_col=0)
 
 ## Get Coronavirus Overlap
-coronavirus_cols = [c for c in coronavirus_keywords if c in comorbidity.columns]
+coronavirus_cols = [c for c in falconet_keywords.get("Coronavirus") if c in comorbidity.columns]
 if len(coronavirus_cols) == 0:
     coronavirus_overlap = pd.Series(index=keyword_counts.columns, data=np.zeros_like(keyword_counts.columns))
 else:
@@ -545,60 +586,79 @@ else:
 ### Keyword Context (Neighbors)
 #######################
 
+LOGGER.info("Calculating Contextual Keyword Usage")
+
 ## Initialize Regex for Keywords (To Get Spans)
 KEYWORD_REGEX = create_regex_dict(keyword_counts.columns.tolist(), include_hashtag=INCLUDE_HASHTAGS)
 
 ## Get Context
 context = dict()
 for window_lbl, window in zip(["pre","post"],[PRE_COVID_WINDOW, POST_COVID_WINDOW]):
-    ## Use Multiprocessing to Get Context
-    mp = Pool(NUM_JOBS)
-    con_helper = partial(get_context,
-                         ngrams=NGRAMS,
-                         window=CONTEXT_WINDOW,
-                         include_mentions=INCLUDE_MENTIONS,
-                         min_date=pd.to_datetime(window[0]),
-                         max_date=pd.to_datetime(window[1]))
-    win_context = list(tqdm(mp.imap_unordered(con_helper, filenames),
-                            desc="{}-COVID 19 Context Calculator".format(window_lbl.title()),
+    ## Cache File
+    context_cache_file = "{}context_{}_{}_{}_{}-{}_{}_{}.joblib".format(CACHE_DIR,
+                                                            window[0],
+                                                            window[1],
+                                                            CONTEXT_WINDOW,
+                                                            NGRAMS[0],
+                                                            NGRAMS[1],
+                                                            VOCAB_CUTOFF,
+                                                            VOCAB_SIZE)
+    ## Load Context
+    if os.path.exists(context_cache_file) and not RERUN:
+        LOGGER.info("Loading {}".format(os.path.basename(context_cache_file)))
+        context[window_lbl] = joblib.load(context_cache_file)
+    else:
+        LOGGER.info("Processing Time Period: {} to {}".format(window[0], window[1]))
+        ## Use Multiprocessing to Get Context
+        mp = Pool(NUM_JOBS)
+        con_helper = partial(get_context,
+                             ngrams=NGRAMS,
+                             window=CONTEXT_WINDOW,
+                             min_date=pd.to_datetime(window[0]),
+                             max_date=pd.to_datetime(window[1]))
+        win_context = list(tqdm(mp.imap_unordered(con_helper, filenames),
+                                desc="{}-COVID 19 Context Calculator".format(window_lbl.title()),
+                                file=sys.stdout,
+                                total=len(filenames)))
+        mp.close()
+        ## Filter Out Nulls
+        win_context = list(filter(lambda i: i, win_context))
+        ## Concatenate Results
+        win_context_concat = dict()
+        win_keyword_counts = Counter()
+        for wc, kc in win_context:
+            win_keyword_counts += kc
+            for term, term_context in wc.items():
+                if term not in win_context_concat:
+                    win_context_concat[term] = Counter()
+                win_context_concat[term] += term_context
+        ## Get Vocab Within Window
+        context_vocab = pd.Series(flatten(win_context_concat.values())).value_counts()
+        context_vocab = context_vocab.loc[context_vocab > VOCAB_CUTOFF].nlargest(VOCAB_SIZE)
+        context_vocab = context_vocab.index.tolist()
+        ## Use Multiprocessing to Get General Vocab Usage
+        mp = Pool(NUM_JOBS)
+        voc_helper = partial(get_vocab_usage,
+                            vocab=context_vocab,
+                            ngrams=NGRAMS,
+                            min_date=pd.to_datetime(window[0]),
+                            max_date=pd.to_datetime(window[1]))
+        win_vocab = list(tqdm(mp.imap_unordered(voc_helper, filenames),
+                            desc="{}-COVID 19 Vocab Counter".format(window_lbl.title()),
                             file=sys.stdout,
                             total=len(filenames)))
-    mp.close()
-    ## Filter Out Nulls
-    win_context = list(filter(lambda i: i, win_context))
-    ## Concatenate Results
-    win_context_concat = dict()
-    win_keyword_counts = Counter()
-    for wc, kc in win_context:
-        win_keyword_counts += kc
-        for term, term_context in wc.items():
-            if term not in win_context_concat:
-                win_context_concat[term] = Counter()
-            win_context_concat[term] += term_context
-    ## Get Vocab Within Window
-    context_vocab = pd.Series(flatten(win_context_concat.values())).value_counts()
-    context_vocab = context_vocab.index.tolist()
-    ## Use Multiprocessing to Get General Vocab Usage
-    mp = Pool(NUM_JOBS)
-    voc_helper = partial(get_vocab_usage,
-                         vocab=context_vocab,
-                         ngrams=NGRAMS,
-                         min_date=pd.to_datetime(window[0]),
-                         max_date=pd.to_datetime(window[1]))
-    win_vocab = list(tqdm(mp.imap_unordered(voc_helper, filenames),
-                          desc="{}-COVID 19 Vocab Counter".format(window_lbl.title()),
-                          file=sys.stdout,
-                          total=len(filenames)))
-    mp.close()
-    ## Concatenate Counts
-    win_vocab = list(filter(lambda i: sum(i.values()) > 0, win_vocab))
-    win_vocab_counts = sum(win_vocab, Counter())
-    ## Cache 
-    context[window_lbl] = {
-                            "context_counts":win_context_concat,
-                            "keyword_counts":win_keyword_counts,
-                            "vocab_counts":win_vocab_counts
-                          }
+        mp.close()
+        ## Concatenate Counts
+        win_vocab = list(filter(lambda i: sum(i.values()) > 0, win_vocab))
+        win_vocab_counts = sum(win_vocab, Counter())
+        ## Cache Locally
+        context[window_lbl] = {
+                                "context_counts":win_context_concat,
+                                "keyword_counts":win_keyword_counts,
+                                "vocab_counts":win_vocab_counts
+                               }
+        ## Cache on Disk
+        _ = joblib.dump(context.get(window_lbl), context_cache_file)
 
 ## Compute PMI Values (Need p(x | keyword), p(x))
 pmi = {}
@@ -663,15 +723,16 @@ pmi_comparison = pd.pivot_table(pmi_comparison,
                                 columns="period",
                                 values=neighbor_cols,
                                 aggfunc=lambda x:x.iloc[0])
-pmi_comparison = pmi_comparison.dropna().copy()
 for nc in neighbor_cols:
     pmi_comparison[nc, "overlap"] = pmi_comparison.apply(lambda row: jaccard(row[nc, "pre"],row[nc, "post"]),axis=1)
     for period in ["pre","post"]:
-        pmi_comparison[nc, period] = pmi_comparison[nc, period].map(lambda i: ", ".join("_".join(k) for k in i[:25]))
+        pmi_comparison[nc, period] = pmi_comparison[nc, period].map(lambda i: ", ".join("_".join(k) for k in i[:25]) if isinstance(i, list) else None)
 
 #######################
 ### Combine Statistics
 #######################
+
+LOGGER.info("Concatenating Metrics")
 
 ## Combine Match Rates
 summary = pd.concat([
@@ -705,8 +766,10 @@ summary.to_csv(f"{CACHE_DIR}summary.csv")
 ### Visualize
 #######################
 
+LOGGER.info("Creating Summary Visuals")
+
 def visualize_keyword_summary(keyword,
-                              window=14,
+                              window=SMOOTHING_WINDOW,
                               min_context_freq=MIN_CONTEXT_FREQ,
                               min_freq=MIN_FREQ,
                               n_examples=5,
@@ -752,8 +815,16 @@ def visualize_keyword_summary(keyword,
     ax[0,0].legend(loc="upper left")
     for tick in ax[0,0].xaxis.get_major_ticks():
          tick.label1.set_horizontalalignment('right')
-    keyword_pmi_pre.iloc[::-1].plot.barh(ax=ax[1,0], color="C0", alpha=0.7)
-    keyword_pmi_post.iloc[::-1].plot.barh(ax=ax[1,1], color="C0", alpha=0.7)
+    if len(keyword_pmi_pre) > 0:
+        keyword_pmi_pre.iloc[::-1].plot.barh(ax=ax[1,0], color="C0", alpha=0.7)
+        ax[1,0].set_title("Pre COVID-19 Context", fontweight="bold", loc="left", fontstyle="italic")
+    else:
+        ax[1,0].axis("off")
+    if len(keyword_pmi_post) > 0:
+        keyword_pmi_post.iloc[::-1].plot.barh(ax=ax[1,1], color="C0", alpha=0.7)
+        ax[1,1].set_title("Post COVID-19 Context", fontweight="bold", loc="left", fontstyle="italic")
+    else:
+        ax[1,1].axis("off")
     for a in ax[1]:
         a.set_ylabel("")
         a.set_xlabel("Context Strength", fontweight="bold")
@@ -779,15 +850,13 @@ def visualize_keyword_summary(keyword,
     ax[0,1].axis("off")
     ax[0,1].set_title("Representative Examples", fontweight="bold", loc="left", fontstyle="italic")
     ax[0,0].set_title("Match Rate", fontweight="bold", loc="left", fontstyle="italic")
-    ax[1,0].set_title("Pre COVID-19 Context", fontweight="bold", loc="left", fontstyle="italic")
-    ax[1,1].set_title("Post COVID-19 Context", fontweight="bold", loc="left", fontstyle="italic")
     for a in ax:
         for b in a:
             b.spines["top"].set_visible(False)
             b.spines["right"].set_visible(False)
             b.tick_params(labelsize=8)
     fig.tight_layout()
-    term_lists = mental_health_keywords_reverse.get(keyword, None)
+    term_lists = falconet_keywords_reverse.get(keyword, None)
     if term_lists:
         fig.suptitle("Keyword: {} ({})".format(keyword, ", ".join(term_lists)), fontweight="bold", y=.975)
     else:
@@ -806,7 +875,7 @@ for keyword in tqdm(to_plot):
     keyword_clean = keyword.replace(" ","_").replace("/","-").replace(":","-")
     try:
         fig, ax = visualize_keyword_summary(keyword,
-                                            window=14,
+                                            window=SMOOTHING_WINDOW,
                                             n_examples=5,
                                             min_context_freq=MIN_CONTEXT_FREQ,
                                             min_freq=MIN_FREQ)
