@@ -20,7 +20,7 @@ Robustness Metrics:
 #######################
 
 ## Path to Falconet Output
-DATA_DIR = "./data/results/twitter/2018-2020/falconet-2020/"
+DATA_DIR = "./data/results/twitter/2018-2020/falconet-keywords/"
 
 ## Path to Cache Directory/Plot Directory
 CACHE_DIR = "./data/results/twitter/2018-2020/keywords/robustness/"
@@ -639,7 +639,7 @@ for window_lbl, window_counts in context.items():
 ## Comparison
 pmi_comparison = []
 for window_lbl, pmi_df in pmi.items():
-    pmi_df_pivot = pd.pivot_table(pmi_df.loc[(pmi_df["context_freq"]>=MIN_CONTEXT_FREQ])&
+    pmi_df_pivot = pd.pivot_table(pmi_df.loc[(pmi_df["context_freq"]>=MIN_CONTEXT_FREQ) & 
                                              (pmi_df["freq"]>=MIN_FREQ)],
                                   columns="keyword",
                                   index="ngram",
