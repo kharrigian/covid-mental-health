@@ -12,6 +12,7 @@ import argparse
 import random
 from glob import glob
 from uuid import uuid4
+from dateutil.parser import parse
 
 ## External
 import numpy as np
@@ -25,7 +26,7 @@ from gensim.models.callbacks import CallbackAny2Vec
 from mhlib.util.helpers import flatten
 from mhlib.util.logging import initialize_logger
 from mhlib.model.data_loaders import LoadProcessedData
-from mhlib.preprocess.tokenizer import Tokenizer
+from mhlib.preprocess.tokenizer import Tokenizer, get_ngrams
 
 ############################
 ### Globals
@@ -74,6 +75,8 @@ def parse_arguments():
     parser.add_argument("--sample_size", type=int, default=None, help="Maximum number of training files")
     parser.add_argument("--sample_rate", type=float, default=1, help="Post-level sample rate (0,1]")
     parser.add_argument("--pretokenize", action="store_true", default=False, help="Run tokenization once at the start and cache on disk.")
+    parser.add_argument("--min_n_gram", type=int, default=1, help="Min N-gram Length")
+    parser.add_argument("--max_n_gram", type=int, default=1, help="Max N-gram Length")
     parser.add_argument("--model_dim", type=int, default=200, help="Vector dimensionality")
     parser.add_argument("--model_min_freq", type=int, default=5, help="Minimum token frequency")
     parser.add_argument("--model_context_size", type=int, default=5, help="Context window")
@@ -102,6 +105,8 @@ class FileStream(object):
                  filenames,
                  min_date=None,
                  max_date=None,
+                 min_n=1,
+                 max_n=1,
                  pretokenized=False,
                  randomized=True,
                  n_samples=None,
@@ -130,6 +135,8 @@ class FileStream(object):
         self.filenames = filenames
         self.min_date = min_date
         self.max_date = max_date
+        self.min_n = min_n
+        self.max_n = max_n
         self.pretokenized = pretokenized
         self.randomized = randomized
         self.n_samples = n_samples
@@ -215,8 +222,21 @@ class FileStream(object):
             user_data (list of str): Raw post text
         """
         ## Load the Gzipped File
-        with gzip.open(filename, "r") as the_file:
-            user_data = json.load(the_file)
+        try:
+            with gzip.open(filename, "r") as the_file:
+                user_data = json.load(the_file)
+            if isinstance(user_data, dict):
+                user_data = [user_data]
+            if "date" in user_data[0] and "created_utc" not in user_data[0]:
+                user_data[0]["created_utc"] = parse(user_data[0]["date"]).timestamp()
+        except:
+            with gzip.open(filename, "r") as the_file:
+                user_data = []
+                for line in the_file:
+                    line_data = json.loads(line)
+                    if "date" in line_data and "created_utc" not in line_data:
+                        line_data["created_utc"] = parse(line_data["date"]).timestamp()
+                    user_data.append(line_data)
         ## Data Amount Filtering
         user_data = self.loader._select_n_recent_documents(user_data)
         ## Date-basd Filtering
@@ -250,7 +270,14 @@ class FileStream(object):
         ## Word Tokenization
         sentences = list(map(TOKENIZER.tokenize, sentences))
         sentences = list(filter(lambda x: len(x) > 0, sentences))
-        return sentences
+        ## N-Grams
+        all_sentences = []
+        for n in range(self.min_n, self.max_n+1):
+            for sent in sentences:
+                sent_n = get_ngrams(sent, n, n)
+                sent_n = [" ".join(i) for i in sent_n]
+                all_sentences.append(sent_n)
+        return all_sentences
 
 class LossCallback(CallbackAny2Vec):
     
@@ -327,10 +354,12 @@ def main():
         file_stream = FileStream(filenames,
                                  min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                                  max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                                 min_n=args.min_n_gram,
+                                 max_n=args.max_n_gram,
                                  random_state=args.random_state)
         ## Tokenize All Available Text in File
         pretokenized_filenames = []
-        for f in tqdm(filenames, file=sys.stdout, desc="Tokenization"):
+        for f in tqdm(filenames[570:], file=sys.stdout, desc="Tokenization"):
             f_data = file_stream.load_text(filename=f,
                                            min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                                            max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
@@ -361,6 +390,8 @@ def main():
     vocab_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                              min_n=args.min_n_gram,
+                              max_n=args.max_n_gram,
                               pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
@@ -373,6 +404,8 @@ def main():
     train_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                              min_n=args.min_n_gram,
+                              max_n=args.max_n_gram,
                               pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
