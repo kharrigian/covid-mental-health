@@ -38,7 +38,7 @@ POST_COVID_WINDOW = ["2020-03-19","2020-08-01"]
 
 ## Meta Parameters
 NUM_JOBS = 8
-RERUN = False
+RERUN = True
 
 #######################
 ### Imports
@@ -252,7 +252,7 @@ def count_keywords_in_file(filename,
         ## Count Keywords
         post_keywords = post.get("keywords")
         if post_keywords is not None:
-            post_keyword_counts = Counter(post_keywords)
+            post_keyword_counts = Counter(list(set(post_keywords)))
             if post_date not in keywords_by_date:
                 keywords_by_date[post_date] = []
             keywords_by_date[post_date].append(post_keyword_counts)
@@ -310,7 +310,7 @@ def _count_fields(filename,
             if line_key not in field_counts[field]:
                 field_counts[field][line_key] = Counter()
             if field == "keywords" and line.get("keywords") is not None:
-                line_key_counts = Counter(line.get("keywords"))
+                line_key_counts = Counter(list(set(line.get("keywords"))))
                 field_counts[field][line_key] += line_key_counts
     return field_counts, timestamp_counts
 
@@ -812,7 +812,7 @@ if not os.path.exists(rep_cache_file) or RERUN:
     for keyword_chunk in tqdm(keyword_chunks,position=0,desc="Keyword Chunk",file=sys.stdout):
         keyword_examples = find_keyword_examples(filenames,
                                                  keyword_chunk,
-                                                 n=10,
+                                                 n=100,
                                                  indorgs=INDORGS,
                                                  genders=GENDERS,
                                                  locations=LOCATIONS)
