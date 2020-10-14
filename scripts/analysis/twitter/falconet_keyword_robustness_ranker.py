@@ -27,18 +27,18 @@ LOCATIONS = {"country":["United States"]}
 ## Context Analysis Parameters
 CONTEXT_WINDOW = None
 NGRAMS = (1,2)
-MIN_FREQ = 5
+MIN_FREQ = 10
 MIN_CONTEXT_FREQ = 5
 VOCAB_CUTOFF = 3
 VOCAB_SIZE = 250000
 SMOOTHING = 0.01
-SMOOTHING_WINDOW = 14
+SMOOTHING_WINDOW = 30
 PRE_COVID_WINDOW = ["2019-03-19","2019-08-01"]
 POST_COVID_WINDOW = ["2020-03-19","2020-08-01"]
 
 ## Meta Parameters
 NUM_JOBS = 8
-RERUN = True
+RERUN = False
 
 #######################
 ### Imports
@@ -251,15 +251,121 @@ def count_keywords_in_file(filename,
         n_posts[post_date] += 1
         ## Count Keywords
         post_keywords = post.get("keywords")
-        if post_keywords:
+        if post_keywords is not None:
             post_keyword_counts = Counter(post_keywords)
             if post_date not in keywords_by_date:
                 keywords_by_date[post_date] = []
             keywords_by_date[post_date].append(post_keyword_counts)
     ## Sum Keywords
     for date, keyword_list in keywords_by_date.items():
-        keywords_by_date[date] = sum(keyword_list, Counter())
+        temp_date_count = Counter()
+        for l in keyword_list:
+            temp_date_count += l
+        keywords_by_date[date] = temp_date_count
     return n_posts, keywords_by_date
+
+def _count_fields(filename,
+                  fields=[],
+                  indorgs=None,
+                  genders=None,
+                  locations=None,
+                  keys=["date","demographics","location"]):
+    """
+
+    """
+    ## counts
+    timestamp_counts = Counter()
+    field_counts = {field:{} for field in fields}
+    ## Parse File
+    f_data = load_file(filename, indorgs, genders, locations)
+    for line in f_data:
+        ## Extract Timestamp At Desired Resoulution
+        post_date = parse(line.get("date")).date().isoformat()
+        ## Identify Line Key
+        line_key = []
+        if "date" in keys:
+            line_key.append(post_date)
+        if "demographics" in keys:
+            line_key.append(line.get("demographics").get("gender","MISSING"))
+            line_key.append(line.get("demographics").get("indorg","MISSING"))
+        if "location" in keys:
+            if line.get("location") is None:
+                line_key.append("MISSING")
+                line_key.append("MISSING")
+                line_key.append("MISSING")
+            else:
+                country = line.get("location").get("country")
+                state = line.get("location").get("state")
+                if country is None:
+                    country = "MISSING"
+                if state is None:
+                    state = "MISSING"
+                line_key.append(country)
+                line_key.append(state)
+                line_key.append("U.S." if country is not None and country == "United States" else "Non-U.S.")
+        line_key = tuple(line_key)
+        ## Update Counts
+        timestamp_counts[line_key] += 1
+        for field in fields:
+            if line_key not in field_counts[field]:
+                field_counts[field][line_key] = Counter()
+            if field == "keywords" and line.get("keywords") is not None:
+                line_key_counts = Counter(line.get("keywords"))
+                field_counts[field][line_key] += line_key_counts
+    return field_counts, timestamp_counts
+
+def count_fields(filenames,
+                 fields=[],
+                 indorgs=None,
+                 genders=None,
+                 locations=None,
+                 keys=["date","demographics","location"]):
+    """
+
+    """
+    ## Initialize Helper
+    helper = partial(_count_fields,
+                     keys=keys,
+                     fields=fields,
+                     indorgs=indorgs,
+                     genders=genders,
+                     locations=locations)
+    ## Initialize and Execute Multiprocessing of Counts
+    pool = Pool(NUM_JOBS)
+    results = list(tqdm(pool.imap_unordered(helper, filenames), total=len(filenames), desc="Counter", file=sys.stdout))
+    pool.close()
+    ## Parse Results
+    field_counts = {}
+    timestamps = Counter()
+    for fieldcount, timecount in results:
+        timestamps += timecount
+        for field, field_dict in fieldcount.items():
+            if field not in field_counts:
+                field_counts[field] = {}
+            for key, counts in field_dict.items():
+                if key not in field_counts[field]:
+                    field_counts[field][key] = Counter()
+                field_counts[field][key] += counts
+    ## Column Order
+    columns = []
+    for k in keys:
+        if k == "date":
+            columns.append("date")
+        if k == "demographics":
+            columns.extend(["gender","indorg"])
+        if k == "location":
+            columns.extend(["country","state","is_united_states"])
+    ## Format Timestamps
+    timestamps = pd.Series(timestamps).reset_index().rename(columns=dict((f"level_{c}", col) for c, col in enumerate(columns)))
+    timestamps = timestamps.rename(columns={0:"count"})
+    ## Format Fields
+    field_dfs = {}
+    for field, field_count in field_counts.items():
+        field_df = pd.DataFrame(field_count).T.reset_index().rename(columns=dict((f"level_{c}", col) for c, col in enumerate(columns)))
+        field_df = field_df.set_index(columns)
+        field_dfs[field] = field_df
+    field_dfs = pd.concat(field_dfs)
+    return field_dfs, timestamps 
 
 def keyword_comorbidity(filename,
                         comparison_set,
@@ -592,6 +698,13 @@ else:
     ## Load From Cache
     n_posts = pd.read_csv(post_count_cache, index_col=0)
     keyword_counts = pd.read_csv(keyword_count_cache, index_col=0)
+    ## Format Indices
+    n_posts.index = pd.to_datetime(n_posts.index)
+    keyword_counts.index = pd.to_datetime(keyword_counts.index)
+
+## Sort
+n_posts = n_posts.sort_index()
+keyword_counts = keyword_counts.sort_index()
 
 ## Relative Matches
 keyword_counts_normed = keyword_counts.apply(lambda row: row / n_posts["count"], axis=0)
@@ -625,6 +738,62 @@ match_rate_covid_relative_change[(pre_covid_num_matches == 0)|(post_covid_num_ma
 max_single_day_change = keyword_counts.diff(axis=0).max(axis=0)
 max_single_day_rate_change = keyword_counts_normed.diff(axis=0).max(axis=0)
 match_rate_coefficient_of_variation = keyword_counts_normed.std(axis=0) / keyword_counts_normed.mean(axis=0)
+
+#######################
+### Demographic Breakdown
+#######################
+
+## Keyword Breakdown by Group
+LOGGER.info("Counting Keywords by Group")
+keyword_breakdown, timestamp_breakdown = count_fields(filenames,
+                                                fields=["keywords"],
+                                                indorgs=INDORGS,
+                                                genders=GENDERS,
+                                                locations={"country":[]},
+                                                keys=["date","demographics","location"])
+
+## Format Breakdown
+keyword_breakdown = keyword_breakdown.loc["keywords"].reset_index()
+keyword_breakdown["date"] = pd.to_datetime(keyword_breakdown["date"])
+timestamp_breakdown["date"] = pd.to_datetime(timestamp_breakdown["date"])
+
+## Aggregate by Gender (US Only)
+gender_keyword_breakdown = pd.pivot_table(keyword_breakdown.loc[keyword_breakdown["country"]=="United States"],
+                                          index="date",
+                                          columns="gender",
+                                          values=keyword_counts.columns,
+                                          aggfunc=np.nansum)
+gender_timestamp_breakdown = pd.pivot_table(timestamp_breakdown.loc[timestamp_breakdown["country"]=="United States"],
+                                            index="date",
+                                            columns="gender",
+                                            values="count",
+                                            aggfunc=np.nansum)
+
+## Overall Aggregation
+num_matches_gender = pd.pivot_table(gender_keyword_breakdown.sum(axis=0).reset_index(), index="level_0", columns="gender", values=0)
+posts_gender = gender_timestamp_breakdown.sum(axis=0)
+match_rate_gender = num_matches_gender / posts_gender
+
+## Aggregation by COVID Period
+pre_covid_num_matches_gender = date_filter(gender_keyword_breakdown, gender_keyword_breakdown.index, PRE_COVID_WINDOW).sum(axis=0)
+pre_covid_num_matches_gender = pd.pivot_table(pre_covid_num_matches_gender.reset_index(), index="level_0", columns="gender", values=0)
+post_covid_num_matches_gender = date_filter(gender_keyword_breakdown, gender_keyword_breakdown.index, POST_COVID_WINDOW).sum(axis=0)
+post_covid_num_matches_gender = pd.pivot_table(post_covid_num_matches_gender.reset_index(), index="level_0", columns="gender", values=0)
+pre_covid_posts_gender = date_filter(gender_timestamp_breakdown, gender_timestamp_breakdown.index, PRE_COVID_WINDOW).sum(axis=0)
+post_covid_posts_gender = date_filter(gender_timestamp_breakdown, gender_timestamp_breakdown.index, POST_COVID_WINDOW).sum(axis=0)
+pre_covid_match_rate_gender = pre_covid_num_matches_gender / pre_covid_posts_gender
+post_covid_match_rate_gender = post_covid_num_matches_gender / post_covid_posts_gender
+
+## Gender Skew (Male)
+match_rate_gender_skew = match_rate_gender["man"] - match_rate_gender["woman"]
+pre_covid_match_rate_gender_skew = pre_covid_match_rate_gender["man"] - pre_covid_match_rate_gender["woman"]
+post_covid_match_rate_gender_skew = post_covid_match_rate_gender["man"] - post_covid_match_rate_gender["woman"]
+
+## Change
+match_rate_change_gender = post_covid_match_rate_gender - pre_covid_match_rate_gender
+match_rate_percent_change_gender = (post_covid_match_rate_gender - pre_covid_match_rate_gender) / pre_covid_match_rate_gender * 100
+for col in match_rate_percent_change_gender.columns:
+    match_rate_percent_change_gender[col][(pre_covid_num_matches_gender[col] == 0)|(pre_covid_num_matches_gender[col]==0)] = np.nan
 
 #######################
 ### Representative Posts
@@ -859,6 +1028,15 @@ summary = pd.concat([
     max_single_day_change.to_frame("max_single_day_change"),
     max_single_day_rate_change.to_frame("max_single_day_rate_change"),
     match_rate_coefficient_of_variation.to_frame("match_rate_coefficient_of_variation"),
+    num_matches_gender.rename(columns={"man":"male_num_matches","woman":"female_num_matches"}),
+    match_rate_gender.rename(columns={"man":"male_match_rate","woman":"female_match_rate"}),
+    pre_covid_num_matches_gender.rename(columns={"man":"male_pre_covid_num_matches","woman":"female_pre_covid_num_matches"}),
+    post_covid_num_matches_gender.rename(columns={"man":"male_post_covid_num_matches","woman":"female_post_covid_num_matches"}),
+    pre_covid_match_rate_gender.rename(columns={"man":"male_pre_covid_match_rate","woman":"female_pre_covid_match_rate"}),
+    post_covid_match_rate_gender.rename(columns={"man":"male_post_covid_match_rate","woman":"female_post_covid_match_rate"}),
+    match_rate_gender_skew.to_frame("male_skew"),
+    pre_covid_match_rate_gender_skew.to_frame("pre_covid_male_skew"),
+    post_covid_match_rate_gender_skew.to_frame("post_covid_male_skew"),
     neighbors],
     axis=1)
 
@@ -886,10 +1064,17 @@ def visualize_timeseries(keyword,
     timeseries = timeseries.reindex(posts.index)
     ci_median = timeseries / posts
     ci_lower, ci_upper = proportion_confint(timeseries, posts, alpha=alpha, method="normal")
+    ## Get Raw Rate
+    raw_rate = keyword_counts.reindex(posts.index)[keyword] / n_posts["count"]
     ## Plot
     fig, ax = plt.subplots(figsize=(10,5.8))
-    ax.fill_between(ci_lower.index, ci_lower, ci_upper, color="C0",alpha=0.4)
-    ax.plot(ci_median.index, ci_median.values, color="C0", alpha=0.8)
+    ax.scatter(raw_rate.index,
+               raw_rate.values,
+               color="C0",
+               alpha=0.2,
+               zorder=-1)
+    ax.fill_between(ci_lower.index, ci_lower, ci_upper, color="C0",alpha=0.5, label="{}-day Average".format(window), zorder=1)
+    ax.plot(ci_median.index, ci_median.values, color="C0", alpha=0.8, zorder=2)
     ax.axvline(pd.to_datetime(POST_COVID_WINDOW[0]),
                   color="black",
                   linestyle="--",
@@ -900,7 +1085,16 @@ def visualize_timeseries(keyword,
     ax.tick_params(axis="x", rotation=45)
     for t in ax.get_xticklabels():
         t.set_horizontalalignment("right")
+    ax.set_ylim(bottom=0)
+    ax.set_xlim(ci_lower.dropna().index.min(), ci_lower.dropna().index.max())
     ax.legend(loc="upper left")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    term_lists = falconet_keywords_reverse.get(keyword, None)
+    if term_lists:
+        ax.set_title("Keyword: {} [{}]".format(keyword, ", ".join(term_lists)), fontweight="bold")
+    else:
+        ax.set_title(f"Keyword: {keyword}", fontweight="bold")
     fig.tight_layout()
     return fig, ax    
 
@@ -927,13 +1121,12 @@ def visualize_pmi(keyword,
     ax.tick_params(labelsize=8)
     ax.set_ylabel("N-Gram", fontweight="bold")
     ax.set_xlabel("Context Strength", fontweight="bold")
-    fig.tight_layout()
     term_lists = falconet_keywords_reverse.get(keyword, None)
     if term_lists:
-        fig.suptitle("Keyword: {} [{}]".format(keyword, ", ".join(term_lists)), fontweight="bold", y=.975)
+        ax.set_title("Keyword: {} [{}]".format(keyword, ", ".join(term_lists)), fontweight="bold")
     else:
-        fig.suptitle(f"Keyword: {keyword}", fontweight="bold", y=.975)
-    fig.subplots_adjust(top=.925)
+        ax.set_title(f"Keyword: {keyword}", fontweight="bold")
+    fig.tight_layout()
     return fig, ax
 
 ## Choose Keywords to Plot
