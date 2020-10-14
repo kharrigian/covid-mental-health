@@ -299,7 +299,7 @@ def _count_fields(filename,
         ## Update Counts
         timestamp_counts[line_key] += 1
         for field in fields:
-            if line_key not in field_counts and line.get(field) is not None:
+            if line_key not in field_counts[field]:
                 field_counts[field][line_key] = Counter()
             if field == "keywords" and line.get("keywords") is not None:
                 for keyword in line.get("keywords"):
