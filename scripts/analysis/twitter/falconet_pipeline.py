@@ -20,13 +20,13 @@ DRY_RUN=False
 ## Pipeline Configuration
 DATA_TYPE="twitter"
 INPUT_FOLDER="/export/c12/mdredze/twitter/public/"
-OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet-keywords/"
-CONFIG="/export/fs03/a08/kharrigian/lab-resources/falconet/pipelines/mental_health/keywords.json"
+OUTPUT_FOLDER="/export/fs03/a08/kharrigian/covid-mental-health/data/results/twitter/2018-2020/falconet-all/"
+CONFIG="/export/fs03/a08/kharrigian/lab-resources/falconet/pipelines/mental_health/all.json"
 LOG_DIR="/home/kharrigian/gridlogs/python/covid/falconet/"
 
 ## Processing Parameters
 MEMORY=32
-NJOBS=1
+NJOBS=8
 PARALLEL=True
 TEMP_DIR = "./temp/"
 
