@@ -5,7 +5,7 @@
 ###################
 
 ## Data Directories
-DATA_DIR = "./data/results/twitter/2018-2020/falconet-2020/"
+DATA_DIR = "./data/results/twitter/2018-2020/falconet-keywords/"
 
 ## Random Sampling
 SKIP_COVID=True
@@ -346,8 +346,8 @@ filenames, matches, n, n_seen, timestamps = search_files(filenames,
 
 ## Disagreement
 disagreements = [i for i in flatten(matches) if i["regex_keywords"] != i["falconet_keywords"]]
-disagreement_rate = len(disagreements) / len(flatten(matches))
-print("Disagreement Rate: {:.3f}".format(disagreement_rate))
+disagreement_rate = len(disagreements) / len(flatten(matches)) * 100
+print("Disagreement Rate: {:.3f}%".format(disagreement_rate))
 
 ## Count Comparision
 regex_counts = pd.Series(Counter(flatten([i["regex_keywords"] for i in flatten(matches)]))).to_frame("regex")
@@ -367,6 +367,4 @@ ax[0].set_yscale("symlog")
 ax[0].set_xscale("symlog")
 ax[1].set_xlabel("Regex to Falconet Ratio (log-scale)")
 fig.tight_layout()
-plt.show()
-
-## 
+plt.close()
