@@ -5,13 +5,13 @@
 
 ## Designate Models
 MODEL_A = {
-        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-02_2019-06/word2vec.model",
-        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2019-02_2019-06/word2vec.model",
+        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
+        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
         "name":"2019"
 }
 MODEL_B = {
-        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-02_2020-06/word2vec.model",
-        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2020-02_2020-06/word2vec.model",
+        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
+        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
         "name":"2020"
 }
 
