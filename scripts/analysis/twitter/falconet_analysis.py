@@ -4,8 +4,8 @@
 ##############################
 
 ## Paths
-DATA_DIR = "./data/results/twitter/2018-2020/falconet-2020/"
-PLOT_DIR = "./plots/twitter/2018-2020/falconet-2020/"
+DATA_DIR = "./data/results/twitter/2018-2020/falconet-all/"
+PLOT_DIR = "./plots/twitter/2018-2020/falconet-all/"
 
 ## Analysis Flags
 KEYWORD_COUNTS = True
@@ -15,15 +15,16 @@ MENTAL_HEALTH_TOPICS = True
 MENTAL_HEALTH_REPRESENTATIVES = True
 
 ## Analysis Parameters
+IGNORE_COVID = True
 K_MATCHES_PER_WINDOW=2
 SMOOTHING_WINDOW=30
-COVID_START="2020-02-01"
+COVID_START="2020-03-19"
 MH_FIELDS=["anxiety","depression"]
 MH_POSITIVE_THRESHOLD=0.9
 MH_NUM_TOPICS=50
-MH_TOPIC_NGRAM=(1,2)
+MH_TOPIC_NGRAM=(1,1)
 MH_TOPIC_SAMPLE_RATE=0.1
-MH_REP_NGRAM=(1,2)
+MH_REP_NGRAM=(1,1)
 MH_REP_SAMPLE_RATE=0.1
 MH_FILTER_SET = { ## Filtering Applied to All Analysis
                 "indorg":["ind"],
@@ -118,6 +119,11 @@ AGGS = [(
             {**MH_FILTER_SET, **{"country":["United States"]}},
             False
 )]
+
+## COVID Terms
+COVID_TERMS = set(i.strip() for i in open("./data/resources/falconet/corona_virus.keywords","r").readlines())
+for c in list(COVID_TERMS):
+    COVID_TERMS.add(f"#{c}")
 
 ##############################
 ### Helpers
@@ -265,7 +271,8 @@ def _count_fields(filename,
                   frequency="day",
                   fields=[],
                   bins=40,
-                  keys=["date","demographics","location"]):
+                  keys=["date","demographics","location"],
+                  ignore_covid=False):
     """
 
     """
@@ -276,6 +283,10 @@ def _count_fields(filename,
     bin_size, bin_boundaries = _establish_bins(bins)
     ## Parse File
     for line in load_file(filename, fields+keys):
+        ## COVID Check
+        if ignore_covid:
+            if line.get("keywords") and COVID_TERMS & set(line.get("keywords")):
+                continue
         ## Extract Timestamp At Desired Resoulution
         line_date = _format_timestamp(line.get("date"), frequency)
         ## Identify Line Key
@@ -302,7 +313,7 @@ def _count_fields(filename,
             if line_key not in field_counts[field]:
                 field_counts[field][line_key] = Counter()
             if field == "keywords" and line.get("keywords") is not None:
-                for keyword in line.get("keywords"):
+                for keyword in set(line.get("keywords")):
                     field_counts[field][line_key][keyword] += 1
             elif field in set(MH_FIELDS) and line.get(field) is not None:
                 pbin = _prob_bin_assigner(line.get(field), bin_boundaries, bin_size)
@@ -313,12 +324,13 @@ def count_fields(filenames,
                  frequency="day",
                  fields=[],
                  bins=40,
-                 keys=["date","demographics","location"]):
+                 keys=["date","demographics","location"],
+                 ignore_covid=False):
     """
 
     """
     ## Initialize Helper
-    helper = partial(_count_fields, frequency=frequency, keys=keys, fields=fields, bins=bins)
+    helper = partial(_count_fields, frequency=frequency, keys=keys, fields=fields, bins=bins, ignore_covid=ignore_covid)
     ## Initialize and Execute Multiprocessing of Counts
     pool = Pool(NUM_JOBS)
     results = list(tqdm(pool.imap_unordered(helper, filenames), total=len(filenames), desc="Counter", file=sys.stdout))
@@ -977,7 +989,8 @@ def main():
         keyword_counts, timestamp_counts = count_fields(files,
                                                         frequency="day",
                                                         fields=["keywords"],
-                                                        keys=["date","demographics","location"])
+                                                        keys=["date","demographics","location"],
+                                                        ignore_covid=IGNORE_COVID)
         ## Count Analysis Over Time
         if KEYWORD_COUNTS:
             ## Isolate Keyword Counts
@@ -1049,7 +1062,8 @@ def main():
                                                               frequency="day",
                                                               fields=MH_FIELDS,
                                                               bins=MH_BINS,
-                                                              keys=["date","demographics","location"])
+                                                              keys=["date","demographics","location"],
+                                                              ignore_covid=IGNORE_COVID)
         ## Isolate Positive Bins
         _, bins = _establish_bins(MH_BINS)
         positive_bins = []
