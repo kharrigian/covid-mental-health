@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from nltk.tokenize import sent_tokenize
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, Phrases
 from gensim.models.callbacks import CallbackAny2Vec
 
 ## Mental Health
@@ -75,7 +75,6 @@ def parse_arguments():
     parser.add_argument("--sample_size", type=int, default=None, help="Maximum number of training files")
     parser.add_argument("--sample_rate", type=float, default=1, help="Post-level sample rate (0,1]")
     parser.add_argument("--pretokenize", action="store_true", default=False, help="Run tokenization once at the start and cache on disk.")
-    parser.add_argument("--min_n_gram", type=int, default=1, help="Min N-gram Length")
     parser.add_argument("--max_n_gram", type=int, default=1, help="Max N-gram Length")
     parser.add_argument("--model_dim", type=int, default=200, help="Vector dimensionality")
     parser.add_argument("--model_min_freq", type=int, default=5, help="Minimum token frequency")
@@ -105,8 +104,6 @@ class FileStream(object):
                  filenames,
                  min_date=None,
                  max_date=None,
-                 min_n=1,
-                 max_n=1,
                  pretokenized=False,
                  randomized=True,
                  n_samples=None,
@@ -135,8 +132,6 @@ class FileStream(object):
         self.filenames = filenames
         self.min_date = min_date
         self.max_date = max_date
-        self.min_n = min_n
-        self.max_n = max_n
         self.pretokenized = pretokenized
         self.randomized = randomized
         self.n_samples = n_samples
@@ -270,14 +265,7 @@ class FileStream(object):
         ## Word Tokenization
         sentences = list(map(TOKENIZER.tokenize, sentences))
         sentences = list(filter(lambda x: len(x) > 0, sentences))
-        ## N-Grams
-        all_sentences = []
-        for n in range(self.min_n, self.max_n+1):
-            for sent in sentences:
-                sent_n = get_ngrams(sent, n, n)
-                sent_n = [" ".join(i) for i in sent_n]
-                all_sentences.append(sent_n)
-        return all_sentences
+        return sentences
 
 class LossCallback(CallbackAny2Vec):
     
@@ -354,12 +342,10 @@ def main():
         file_stream = FileStream(filenames,
                                  min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                                  max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
-                                 min_n=args.min_n_gram,
-                                 max_n=args.max_n_gram,
                                  random_state=args.random_state)
         ## Tokenize All Available Text in File
         pretokenized_filenames = []
-        for f in tqdm(filenames[570:], file=sys.stdout, desc="Tokenization"):
+        for f in tqdm(filenames, file=sys.stdout, desc="Tokenization"):
             f_data = file_stream.load_text(filename=f,
                                            min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                                            max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
@@ -372,6 +358,24 @@ def main():
             pretokenized_filenames.append(fname)
         ## Update Filesnames
         filenames = pretokenized_filenames
+    ## Learn Phrases (Optional)
+    phraser = None
+    if args.max_n_gram > 1:
+        LOGGER.info("Learning Phrases (n=2)")
+        phrase_stream = FileStream(filenames,
+                                   min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
+                                   max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
+                                   pretokenized=args.pretokenize,
+                                   randomized=True,
+                                   n_samples=args.sample_rate if args.sample_rate < 1 else None,
+                                   shuffle=False,
+                                   random_state=args.random_state)
+        phraser = Phrases(phrase_stream)
+        current_n = 2
+        while current_n < args.max_n_gram:
+            LOGGER.info(f"Learning Phrases (n={current_n+1})")
+            phraser = Phrases(phraser[phrase_stream])
+            current_n += 1
     ## Initialize Word2Vec
     LOGGER.info("Initializing Word2Vec Model")
     word2vec = Word2Vec(size=args.model_dim,
@@ -390,28 +394,24 @@ def main():
     vocab_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
-                              min_n=args.min_n_gram,
-                              max_n=args.max_n_gram,
                               pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
                               shuffle=False,
                               random_state=args.random_state)
-    word2vec.build_vocab(sentences=vocab_stream,
+    word2vec.build_vocab(sentences=vocab_stream if phraser is None else phraser[vocab_stream],
                          keep_raw_vocab=True)
     ## Train Model
     LOGGER.info("Beginning Training")
     train_stream = FileStream(filenames,
                               min_date=pd.to_datetime(args.start_date) if args.start_date is not None else None,
                               max_date=pd.to_datetime(args.end_date) if args.end_date is not None else None,
-                              min_n=args.min_n_gram,
-                              max_n=args.max_n_gram,
                               pretokenized=args.pretokenize,
                               randomized=True,
                               n_samples=args.sample_rate if args.sample_rate < 1 else None,
                               shuffle=args.model_shuffle,
                               random_state=args.random_state)
-    word2vec.train(sentences=train_stream,
+    word2vec.train(sentences=train_stream if phraser is None else phraser[train_stream],
                    total_examples=word2vec.corpus_count,
                    epochs=args.model_epochs,
                    compute_loss=True,
