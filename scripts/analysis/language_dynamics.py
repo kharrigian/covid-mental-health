@@ -4,37 +4,33 @@
 #####################
 
 ## Location of Data
-PLATFORM = "reddit"
-DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
-CACHE_DIR = "./data/processed/reddit/2017-2020/language_dynamics/"
-PLOT_DIR = "./plots/reddit/2017-2020/language_dynamics/"
+# PLATFORM = "reddit"
+# DATA_DIR = "./data/processed/reddit/2017-2020/histories/"
+# CACHE_DIR = "./data/processed/reddit/2017-2020/language_dynamics/"
+# PLOT_DIR = "./plots/reddit/2017-2020/language_dynamics/"
 
-# PLATFORM = "twitter"
-# DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
-# CACHE_DIR = "./data/processed/twitter/2018-2020/language_dynamics/"
-# PLOT_DIR = "./plots/twitter/2018-2020/language_dynamics/"
+PLATFORM = "twitter"
+DATA_DIR = "./data/processed/twitter/2018-2020/timelines/"
+CACHE_DIR = "./data/processed/twitter/2018-2020/language_dynamics/"
+PLOT_DIR = "./plots/twitter/2018-2020/language_dynamics/"
 
 ## Analysis Parameters
 NGRAMS = (1, 1)
 RERUN_VOCAB = False
 RERUN_COUNT = False
+# REFERENCE_MODELS = {
+#             "depression":"../mental-health/models/20201008222646-CameraReady_SMHD/model.joblib",
+# }
 REFERENCE_MODELS = {
-            "depression":"../mental-health/models/falconet_v2/20200824135305-SMHD-Depression/model.joblib",
-            "anxiety":"../mental-health/models/falconet_v2/20200824135147-SMHD-Anxiety/model.joblib"
+            "depression":"../mental-health/models/20201015121355-Falconet-Multitask-Depression/model.joblib",
 }
-# REFERENCE_MODELS = {
-#             "depression":"../mental-health/models/falconet_v2/20200824134720-Multitask-Depression/model.joblib",
-#             "anxiety":"../mental-health/models/falconet_v2/20200824135027-Multitask-Anxiety/model.joblib"
-# }
-# REFERENCE_MODELS = {
-#             "depression":"../mental-health/models/falconet_v2/20200912132424-CLPsych-Depression/model.joblib",
-# }
+
 
 ## Date Boundaries
 DATE_START = "2019-01-01"
 DATE_END = "2020-06-15"
 CACHE_FREQ = "W-Mon"
-COVID_START = "2020-02-01"
+COVID_START = "2020-03-19"
 
 ## Extra Parameters
 NUM_PROCESSES = 8
