@@ -5,13 +5,13 @@
 
 ## Designate Models
 MODEL_A = {
-        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
-        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
+        "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
+        # "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2019-03-19_2019-06-01/word2vec.model",
         "name":"2019"
 }
 MODEL_B = {
-        # "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
-        "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
+        "path":"./data/results/twitter/2018-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
+        # "path":"./data/results/reddit/2017-2020/word2vec/word2vec_2020-03-19_2020-06-01/word2vec.model",
         "name":"2020"
 }
 
@@ -257,13 +257,14 @@ for term_group, term_values in MATCH_DICT.items():
     changes[group_name] = {}
     print("#"*50 + f"\n### Keyword Group: {group_name}\n" + "#" *50 + "\n")
     for term in term_values.get("terms"):
-        if term.lower() not in vocab_shared_term2ind:
+        term_formatted = term.lower().replace(" ","_")
+        if term_formatted not in vocab_shared_term2ind:
             continue
         ## Get Top Values
-        top_a = [vocab_shared_masked[v] for v in top_k_a[vocab_shared_term2ind[term.lower()]]][:DISPLAY_TOP]
-        top_b = [vocab_shared_masked[v] for v in top_k_b[vocab_shared_term2ind[term.lower()]]][:DISPLAY_TOP]
+        top_a = [vocab_shared_masked[v] for v in top_k_a[vocab_shared_term2ind[term_formatted]]][:DISPLAY_TOP]
+        top_b = [vocab_shared_masked[v] for v in top_k_b[vocab_shared_term2ind[term_formatted]]][:DISPLAY_TOP]
         ## Get Change Score
-        change_score = nearest_neighbors.loc[term.lower()]["overlap"] / K_NEIGHBORS
+        change_score = nearest_neighbors.loc[term_formatted]["overlap"] / K_NEIGHBORS
         ## Cache Top Values
         changes[group_name][term] = {MODEL_A.get("name"):top_a, MODEL_B.get("name"):top_b}
         change_scores.append((group_name, term, change_score))
