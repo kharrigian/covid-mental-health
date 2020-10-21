@@ -5,14 +5,14 @@
 
 ## CLSP Grid Configuration
 USERNAME = "kharrigian"
-MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/falconet_v2/"
+MODEL_DIR = "/export/fs03/a08/kharrigian/mental-health/models/"
 
 ## General Inference Parameters
 CHUNKSIZE = 5000 ## Number of files to process at a time
 
 ## Inference Configuration
-# MODEL_FILE = "20200824135305-SMHD-Depression/model.joblib"
-# MODEL_FILE = "20200824135147-SMHD-Anxiety/model.joblib"
+# MODEL_FILE = "20201020193024-Falconet-SMHD-Depression/model.joblib"
+# MODEL_FILE = "20201020193251-Falconet-SMHD-Anxiety/model.joblib"
 # START_DATE = "2019-01-01"
 # END_DATE = "2020-06-15"
 # FREQ = "W-Mon"
@@ -23,13 +23,12 @@ CHUNKSIZE = 5000 ## Number of files to process at a time
 # INPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/processed/reddit/2017-2020/histories/"
 # OUTPUT_DIR = "/export/fs03/a08/kharrigian/covid-mental-health/data/results/reddit/2017-2020/"
 
-# MODEL_FILE = "20200824134720-Multitask-Depression/model.joblib"
-# MODEL_FILE = "20200824135027-Multitask-Anxiety/model.joblib"
-MODEL_FILE = "20200912132424-CLPsych-Depression/model.joblib"
+# MODEL_FILE = "20201015121355-Falconet-Multitask-Depression/model.joblib"
+MODEL_FILE = "20201015115714-Falconet-Multitask-Anxiety/model.joblib"
 FREQ = "W-Mon"
 WINDOW_SIZE = 4
 STEP_SIZE = 1
-RUN_NAME = "monthly-weekly_step-clpsych"
+RUN_NAME = "monthly-weekly_step"
 PLATFORM = "twitter"
 
 # START_DATE = "2013-01-01"
