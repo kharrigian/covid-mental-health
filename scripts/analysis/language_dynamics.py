@@ -19,10 +19,12 @@ NGRAMS = (1, 1)
 RERUN_VOCAB = False
 RERUN_COUNT = False
 # REFERENCE_MODELS = {
-#             "depression":"../mental-health/models/20201008222646-CameraReady_SMHD/model.joblib",
+#             "depression":"../mental-health/models/20201020193024-Falconet-SMHD-Depression/model.joblib",
+#             "anxiety":"../mental-health/models/20201020193251-Falconet-SMHD-Anxiety/model.joblib",
 # }
 REFERENCE_MODELS = {
             "depression":"../mental-health/models/20201015121355-Falconet-Multitask-Depression/model.joblib",
+            "anxiety":"../mental-health/models/20201015115714-Falconet-Multitask-Anxiety/model.joblib",
 }
 
 
