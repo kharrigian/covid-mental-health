@@ -30,7 +30,6 @@ from scipy.sparse import vstack
 import reverse_geocoder as rg # pip install reverse_geocoder
 
 ## Local Modules
-from smgeo.acquire.reddit import RedditData
 from smgeo.model import preprocess
 from smgeo.util.logging import initialize_logger
 from mhlib.util.multiprocessing import MyPool as Pool

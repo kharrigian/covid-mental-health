@@ -10,3 +10,4 @@ shap
 statsmodels>=0.11.1
 fbprophet>=0.6
 seaborn
+retriever @ git+ssh://git@github.com/kharrigian/retriever@main#egg=retriever

@@ -31,8 +31,8 @@ from random import Random
 ## External Libraries
 import pandas as pd
 from tqdm import tqdm
-from mhlib.acquire.reddit import RedditData
 from mhlib.util.logging import initialize_logger
+from retriever import Reddit as RedditData
 
 ###################
 ### Globals

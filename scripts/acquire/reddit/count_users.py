@@ -17,7 +17,7 @@ from datetime import datetime
 
 ## External Libraries
 import pandas as pd
-from mhlib.acquire.reddit import RedditData
+from retriever import Reddit as import RedditData
 from mhlib.util.logging import initialize_logger
 
 #######################

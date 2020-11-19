@@ -24,8 +24,8 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from mhlib.util.helpers import chunks
-from mhlib.acquire.reddit import RedditData
 from mhlib.util.logging import initialize_logger
+from retriever import Reddit as RedditData
 
 ####################
 ### Globals
@@ -45,6 +45,8 @@ def get_author_comment_counts(author_list,
                               api,
                               start_date=None,
                               end_date=None,
+                              chunksize="1W",
+                              limit=10000
                               ):
     """
 
@@ -52,17 +54,51 @@ def get_author_comment_counts(author_list,
     ## Maximum Reqeust Length
     if len(author_list) > 100:
         raise ValueError("Input author_list can only have a maximum of 100 authors")
-    ## Structure Request
-    response = api.api.search_comments(author=author_list,
-                                       before=api._get_end_date(end_date),
-                                       after=api._get_start_date(start_date),
-                                       aggs=["author"])
-    ## Get Author Counts
-    comment_counts = next(response)
-    if "author" not in comment_counts:
-        return Counter(dict((a,0) for a in author_list))
-    comment_counts = dict((a["key"], a["doc_count"]) for a in comment_counts["author"])
-    comment_counts = Counter(comment_counts)
+    ## Range Formatted
+    start_epoch = api._get_start_date(start_date)
+    end_epoch = api._get_end_date(end_date)
+    ## Chunk Queries into Time Periods
+    time_chunks = api._chunk_timestamps(start_epoch,
+                                        end_epoch,
+                                        chunksize)
+    ## Make Query Attempt
+    df_all = []
+    backoff = api._backoff if hasattr(api, "_backoff") else 2
+    retries = api._max_retries if hasattr(api, "_max_retries") else 3
+    total = 0
+    for tcstart, tcstop in zip(time_chunks[:-1], time_chunks[1:]):
+        ## Check Limit
+        if limit is not None and total >= limit:
+            break
+        for _ in range(retries):
+            try:
+                ## Construct Call
+                query_params = {"before":tcstop+1,
+                                "after":tcstart,
+                                "limit":limit,
+                                "filter":["id","created_utc","author","author_fullname"],
+                                "author":author_list}
+                ## Construct Call
+                req = api.api.search_comments(**query_params)
+                ## Retrieve and Parse Data
+                df = api._parse_psaw_comment_request(req)
+                if len(df) > 0:
+                    df = df.sort_values("created_utc", ascending=True)
+                    df = df.reset_index(drop=True)
+                    df_all.append(df)
+                    total += len(df)
+                break
+            except Exception as e:
+                sleep(backoff)
+                backoff = 2 ** backoff
+    if len(df_all) > 0:
+        df_all = pd.concat(df_all).reset_index(drop=True)
+        if limit is not None and len(df_all) > limit:
+            df_all = df_all.iloc[:limit].copy()
+        comment_counts = Counter(df_all["author"].value_counts().to_dict())
+    else:
+        comment_counts = Counter()
+    ## Fill In Missing
     for a in author_list:
         if a not in comment_counts:
             comment_counts[a] = 0
