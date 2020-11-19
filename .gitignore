@@ -4,6 +4,9 @@
 *.csv
 *.joblib
 
+## Unrelated Documentation
+documentation/
+
 ## Specific Data Paths
 data/raw
 data/processed
